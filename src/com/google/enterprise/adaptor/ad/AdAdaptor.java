@@ -25,40 +25,23 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.logging.Logger;
 
-/**
- * Adaptor for Active Directory.
- */
+/** Adaptor for Active Directory. */
 public class AdAdaptor extends AbstractAdaptor {
   private static final Logger log
       = Logger.getLogger(AdAdaptor.class.getName());
   private Charset encoding = Charset.forName("UTF-8");
+  private static final boolean CASE_SENSITIVE = false;
 
   /** Gives list of document ids that you'd like on the GSA. */
   @Override
   public void getDocIds(DocIdPusher pusher) throws InterruptedException {
-    ArrayList<DocId> mockDocIds = new ArrayList<DocId>();
-    /* Replace this mock data with code that lists your repository. */
-    mockDocIds.add(new DocId("1001"));
-    mockDocIds.add(new DocId("1002"));
-    pusher.pushDocIds(mockDocIds);
+    pusher.pushGroupDefinitions(null, CASE_SENSITIVE);
   }
 
-  /** Gives the bytes of a document referenced with id. */
+  /** This adaptor does not serve documents. */
   @Override
   public void getDocContent(Request req, Response resp) throws IOException {
-    DocId id = req.getDocId();
-    String str;
-    if ("1001".equals(id.getUniqueId())) {
-      str = "Document 1001 says hello and apple orange";
-    } else if ("1002".equals(id.getUniqueId())) {
-      str = "Document 1002 says hello and banana strawberry";
-    } else {
-      resp.respondNotFound();
-      return;
-    }
-    resp.setContentType("text/plain; charset=utf-8");
-    OutputStream os = resp.getOutputStream();
-    os.write(str.getBytes(encoding));
+    resp.respondNotFound();
   }
 
   /** Call default main for adaptors. */
