@@ -1,4 +1,4 @@
-// Copyright 2011 Google Inc. All Rights Reserved.
+// Copyright 2013 Google Inc. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,7 +15,8 @@
 package com.google.enterprise.adaptor.ad;
 
 import com.google.enterprise.adaptor.AbstractAdaptor;
-import com.google.enterprise.adaptor.DocId;
+import com.google.enterprise.adaptor.AdaptorContext;
+import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
@@ -32,10 +33,32 @@ public class AdAdaptor extends AbstractAdaptor {
   private Charset encoding = Charset.forName("UTF-8");
   private static final boolean CASE_SENSITIVE = false;
 
+  @Override
+  public void initConfig(Config config) {
+    config.addKey("ad.method", "standard"); // ssl? otherwise not ssl
+    config.addKey("ad.host", null);
+    config.addKey("ad.port", null);
+    config.addKey("ad.principal", null);
+    config.addKey("ad.password", null);
+  }
+
+  @Override
+  public void init(AdaptorContext context) throws Exception {
+    String method = context.getConfig().getValue("ad.method").toUpperCase();
+    AdServer ad = new AdServer(
+        method.equals("ssl") ? Method.SSL : Method.STANDARD,
+        context.getConfig().getValue("ad.host"),
+        Integer.parseInt(context.getConfig().getValue("ad.port")), 
+        context.getConfig().getValue("ad.principal"),
+        context.getConfig().getValue("ad.password"));
+    ad.initialize();
+    ad.connect();
+  }
+
   /** Gives list of document ids that you'd like on the GSA. */
   @Override
   public void getDocIds(DocIdPusher pusher) throws InterruptedException {
-    pusher.pushGroupDefinitions(null, CASE_SENSITIVE);
+    //pusher.pushGroupDefinitions(null, CASE_SENSITIVE);
   }
 
   /** This adaptor does not serve documents. */
