@@ -1,5 +1,6 @@
 package com.google.enterprise.adaptor.ad;
 
+import java.util.logging.Logger;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -12,6 +13,9 @@ import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchResult;
 
 public class AdEntity {
+  private static final Logger log =
+      Logger.getLogger(AdEntity.class.getName());
+
   private String dn;
   private String sAMAccountName;
   private String userPrincipalName;
@@ -254,5 +258,29 @@ public class AdEntity {
    */
   public boolean areAllMembershipsRetrieved() {
     return allMembershipsRetrieved;
+  }
+
+  public String getSid() {
+    return sid;
+  }
+
+  public String getPrimaryGroupSid() {
+    int index = sid.lastIndexOf(AdConstants.HYPHEN_CHAR) + 1;
+    return sid.substring(0,  index) + primaryGroupId;
+  }
+
+  public static String parseForeignSecurityPrincipal(String dn) {
+    if (!dn.toLowerCase().contains("cn=foreignsecurityprincipals,dc=")) {
+      return null;
+    }
+    int start = dn.indexOf('=');
+    int end = dn.indexOf(',');
+    String sid = dn.substring(start + 1, end);
+    // check for mangled or malformed security principal format
+    if (!sid.matches("^S-1-5-21(-[0-9]+)+$")) {
+      log.fine("invalid foreign security principal [" + dn + "].");
+      return null;
+    }
+    return sid;
   }
 }

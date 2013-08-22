@@ -43,8 +43,10 @@ import javax.naming.ldap.LdapContext;
 import javax.naming.ldap.PagedResultsControl;
 import javax.naming.ldap.PagedResultsResponseControl;
 
+/** Client that talks to Active Directory. */
 public class AdServer {
-  private static final Logger LOGGER = Logger.getLogger(AdServer.class.getName());
+  private static final Logger LOGGER
+      = Logger.getLogger(AdServer.class.getName());
 
   protected LdapContext ldapContext = null;
   private SearchControls searchCtls;
@@ -67,12 +69,21 @@ public class AdServer {
   private String dnsRoot;
   private Timestamp lastFullSync;
 
-  public AdServer(
-      Method connectMethod,
-      String hostName,
-      int port,
-      String principal,
-      String password) {
+  public AdServer(Method connectMethod, String hostName,
+      int port, String principal, String password) {
+    if (null == connectMethod || null == hostName
+        || null == principal || null == password) {
+      throw new NullPointerException();
+    }
+    if ("".equals(hostName)) {
+      throw new IllegalArgumentException("host needs to be non-empty");
+    }
+    if ("".equals(principal)) {
+      throw new IllegalArgumentException("principal needs to be non-empty");
+    }
+    if ("".equals(password)) {
+      throw new IllegalArgumentException("password needs to be non-empty");
+    }
     this.hostName = hostName;
     this.port = port;
     this.principal = principal;
@@ -387,5 +398,9 @@ public class AdServer {
    */
   public long getHighestCommittedUSN() {
     return highestCommittedUSN;
+  }
+
+  public String getHostName() {
+    return hostName;
   }
 }
