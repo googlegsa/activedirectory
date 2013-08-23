@@ -39,23 +39,26 @@ public class AdAdaptor extends AbstractAdaptor {
   private static final boolean CASE_SENSITIVITY = false;
 
   private String namespace;
-  private String domain;
+  private String defaultUser;
+  private String defaultPassword;
   private List<AdServer> servers = new ArrayList<AdServer>();
 
   @Override
   public void initConfig(Config config) {
     config.addKey("ad.servers", null);
     config.addKey("ad.namespace", "Default");
-    // TODO: pull domain from AD
-    config.addKey("ad.domain", null);
+    config.addKey("ad.defaultUser", null);
+    config.addKey("ad.defaultPassword", null);
   }
 
   @Override
   public void init(AdaptorContext context) throws Exception {
     namespace = context.getConfig().getValue("ad.namespace");
     log.config("common namespace: " + namespace);
-    domain = context.getConfig().getValue("ad.domain");
-    log.config("common domain: " + domain);
+    defaultUser = context.getConfig().getValue("ad.defaultUser");
+    log.config("common user: " + defaultUser);
+    defaultPassword = context.getConfig().getValue("ad.defaultPassword");
+
     List<Map<String, String>> serverConfigs
         = context.getConfig().getListOfConfigs("ad.servers");
     for (Map<String, String> singleServerConfig : serverConfigs) {
@@ -69,6 +72,12 @@ public class AdAdaptor extends AbstractAdaptor {
       }
       String principal = singleServerConfig.get("user");
       String passwd = singleServerConfig.get("password");
+      if (null == principal || principal.isEmpty()) {
+        principal = defaultUser;
+      }
+      if (null == passwd || passwd.isEmpty()) {
+        passwd = defaultPassword;
+      }
       AdServer adServer = new AdServer(method, host, port, principal, passwd);
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
@@ -93,23 +102,27 @@ public class AdAdaptor extends AbstractAdaptor {
   public void getDocIds(DocIdPusher pusher) throws InterruptedException {
     // TODO: implement well known groups
     // TODO: implement built in groups
+    GroupCatalog cumulativeCatalog = new GroupCatalog();
     for (AdServer server : servers) {
       server.initialize();
       try {
         GroupCatalog catalog = new GroupCatalog();
         catalog.readFrom(server);
-        pusher.pushGroupDefinitions(catalog.makeDefs(), CASE_SENSITIVITY);
+        cumulativeCatalog.add(catalog);
       } catch (InterruptedNamingException ine) {
         String host = server.getHostName();
         log.log(Level.WARNING, "skipping " + host, ine);
       }
     } 
+    cumulativeCatalog.resolveForeignSecurityPrincipals();
+    pusher.pushGroupDefinitions(cumulativeCatalog.makeDefs(), CASE_SENSITIVITY);
   }
 
   // Space for all group info, organized in different ways
   private class GroupCatalog {
     Set<AdEntity> entities = new HashSet<AdEntity>();
     Map<AdEntity, Set<String>> members = new HashMap<AdEntity, Set<String>>();
+    Map<AdEntity, String> domain = new HashMap<AdEntity, String>();
 
     Map<String, AdEntity> bySid = new HashMap<String, AdEntity>();
     Map<String, AdEntity> byDn = new HashMap<String, AdEntity>();
@@ -130,9 +143,9 @@ public class AdAdaptor extends AbstractAdaptor {
       for (AdEntity e : entities) {
         bySid.put(e.getSid(), e);
         byDn.put(e.getDn(), e);
+        domain.put(e, server.getnETBIOSName());
       }
       resolvePrimaryGroups();
-      resolveForeignSecurityPrincipals();
     }
 
     private void resolvePrimaryGroups() {
@@ -149,7 +162,7 @@ public class AdAdaptor extends AbstractAdaptor {
       }
     }
 
-    private void resolveForeignSecurityPrincipals() {
+    void resolveForeignSecurityPrincipals() {
       for (AdEntity entity : entities) {
         if (!entity.isGroup()) {
           continue;
@@ -176,16 +189,15 @@ public class AdAdaptor extends AbstractAdaptor {
       }
     }
 
-    private Map<GroupPrincipal, List<Principal>> makeDefs() {
+    Map<GroupPrincipal, List<Principal>> makeDefs() {
       Map<GroupPrincipal, List<Principal>> groups
           = new HashMap<GroupPrincipal, List<Principal>>();
       for (AdEntity entity : entities) {
         if (!entity.isGroup()) {
           continue;
         }
-        // TODO: get domain from entity
         GroupPrincipal group = new GroupPrincipal(
-            entity.getSAMAccountName() + "@" + domain, namespace);
+            entity.getSAMAccountName() + "@" + domain.get(entity), namespace);
         List<Principal> def = new ArrayList<Principal>();
         if (members.containsKey(entity)) {
           for (String memberDn : members.get(entity)) {
@@ -197,13 +209,11 @@ public class AdAdaptor extends AbstractAdaptor {
             }
             Principal p;
             if (member.isGroup()) {
-              // TODO: get domain from entity
-              p = new GroupPrincipal(
-                  member.getSAMAccountName() + "@" + domain, namespace);
+              p = new GroupPrincipal(member.getSAMAccountName() + "@"
+                  + domain.get(entity), namespace);
             } else {
-              // TODO: get domain from entity
-              p = new UserPrincipal(
-                  member.getSAMAccountName() + "@" + domain, namespace);
+              p = new UserPrincipal(member.getSAMAccountName() + "@"
+                  + domain.get(entity), namespace);
             }
             def.add(p);
           }
@@ -225,6 +235,15 @@ public class AdAdaptor extends AbstractAdaptor {
         }
       }
       return groups;
+    }
+
+    /* Combines info of another catalog with this one. */
+    void add(GroupCatalog other) {
+      entities.addAll(other.entities);
+      members.putAll(other.members);
+      bySid.putAll(other.bySid);
+      byDn.putAll(other.byDn);
+      domain.putAll(other.domain);
     }
   }
 }
