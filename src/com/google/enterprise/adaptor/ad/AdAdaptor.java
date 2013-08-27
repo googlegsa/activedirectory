@@ -35,39 +35,45 @@ import javax.naming.InterruptedNamingException;
 public class AdAdaptor extends AbstractAdaptor {
   private static final Logger log
       = Logger.getLogger(AdAdaptor.class.getName());
-  // private static final Charset ENCODING = Charset.forName("UTF-8");
   private static final boolean CASE_SENSITIVITY = false;
 
   private String namespace;
-  private String defaultUser;
-  private String defaultPassword;
+  private String defaultUser;  // used if an AD doesn't override
+  private String defaultPassword;  
   private List<AdServer> servers = new ArrayList<AdServer>();
 
   @Override
   public void initConfig(Config config) {
     config.addKey("ad.servers", null);
-    config.addKey("ad.namespace", "Default");
+    config.addKey("adaptor.namespace", "Default");
     config.addKey("ad.defaultUser", null);
     config.addKey("ad.defaultPassword", null);
   }
 
   @Override
   public void init(AdaptorContext context) throws Exception {
-    namespace = context.getConfig().getValue("ad.namespace");
+    namespace = context.getConfig().getValue("adaptor.namespace");
     log.config("common namespace: " + namespace);
     defaultUser = context.getConfig().getValue("ad.defaultUser");
     defaultPassword = context.getConfig().getValue("ad.defaultPassword");
 
     List<Map<String, String>> serverConfigs
         = context.getConfig().getListOfConfigs("ad.servers");
+    servers.clear();  // in case init gets called again
     for (Map<String, String> singleServerConfig : serverConfigs) {
       String host = singleServerConfig.get("host");
-      int port = Integer.parseInt(singleServerConfig.get("port"));
-      Method method = null;
-      if ("ssl".equals(singleServerConfig.get("method").toLowerCase())) {
-        method = Method.SSL;
-      } else {
-        method = Method.STANDARD;
+      int port = 389;
+      if (singleServerConfig.containsKey("port")) {
+        port = Integer.parseInt(singleServerConfig.get("port"));
+      }
+      Method method = Method.STANDARD;
+      if (singleServerConfig.containsKey("method")) {
+        String methodStr = singleServerConfig.get("method").toLowerCase();
+        if ("ssl".equals(methodStr)) {
+          method = Method.SSL;
+        } else if (!"standard".equals(methodStr)) {
+          throw new IllegalArgumentException("invalid method: " + methodStr);
+        }
       }
       String principal = singleServerConfig.get("user");
       String passwd = singleServerConfig.get("password");
@@ -80,11 +86,15 @@ public class AdAdaptor extends AbstractAdaptor {
           throw new IllegalStateException(err);
         }
       }
+      if (null == passwd || passwd.isEmpty()) {
+        String err = "no password for " + host;
+        throw new IllegalStateException(err);
+      }
       AdServer adServer = new AdServer(method, host, port, principal, passwd);
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
       dup.put("password", "XXXXXX");  // hide password
-      log.config("AD server spec: " + dup);
+      log.log(Level.CONFIG, "AD server spec: {0}", dup);
     }
   }
 
@@ -127,10 +137,10 @@ public class AdAdaptor extends AbstractAdaptor {
   // Space for all group info, organized in different ways
   private class GroupCatalog {
     Set<AdEntity> entities = new HashSet<AdEntity>();
+    Map<AdEntity, Set<String>> members = new HashMap<AdEntity, Set<String>>();
 
     Map<String, AdEntity> bySid = new HashMap<String, AdEntity>();
     Map<String, AdEntity> byDn = new HashMap<String, AdEntity>();
-    Map<AdEntity, Set<String>> members = new HashMap<AdEntity, Set<String>>();
     Map<AdEntity, String> domain = new HashMap<AdEntity, String>();
    
     void readFrom(AdServer server) throws InterruptedNamingException {
@@ -144,20 +154,23 @@ public class AdAdaptor extends AbstractAdaptor {
               AdConstants.ATTR_PRIMARYGROUPID,
               AdConstants.ATTR_MEMBER}
       );
-      int n = entities.size();
-      log.fine("received " + n + " entities from server");
+      log.log(Level.FINE, "received {0} entities from server", entities.size());
       for (AdEntity e : entities) {
         bySid.put(e.getSid(), e);
         byDn.put(e.getDn(), e);
         // TODO(pjo): Have AdServer put domain into AdEntity during search
         domain.put(e, server.getnETBIOSName());
       }
+      initializeMembers();
+      resolvePrimaryGroups();
+    }
+
+    private void initializeMembers() {
       for (AdEntity entity : entities) {
         if (entity.isGroup()) {
           members.put(entity, new TreeSet<String>(entity.getMembers()));
         }
       }
-      resolvePrimaryGroups();
     }
 
     private void resolvePrimaryGroups() {
@@ -174,8 +187,8 @@ public class AdAdaptor extends AbstractAdaptor {
         members.get(primaryGroup).add(user.getDn());
         nadds++;
       }
-      log.fine("number of primary groups: " + members.keySet().size());
-      log.fine("number of users added to all primary groups: " + nadds);
+      log.log(Level.FINE, "# primary groups: {0}", members.keySet().size());
+      log.log(Level.FINE, "# users added to all primary groups: {0}", nadds);
     }
 
     void resolveForeignSecurityPrincipals() {
@@ -208,8 +221,10 @@ public class AdAdaptor extends AbstractAdaptor {
         }
         members.put(entity, resolvedMembers);
       }
-      log.fine("#groups, #null-SID, #null-resolve, #resolve: " + nGroups
-          + ", " + nNullSid + ", " + nNullResolution + ", " + nResolved);
+      log.log(Level.FINE, "#groups: {0}", nGroups);
+      log.log(Level.FINE, "#null-SID: {0}", nNullSid);
+      log.log(Level.FINE, "#null-resolve: {0}", nNullResolution);
+      log.log(Level.FINE, "#resolved: {0}", nResolved);
     }
 
     Map<GroupPrincipal, List<Principal>> makeDefs() {
@@ -222,32 +237,33 @@ public class AdAdaptor extends AbstractAdaptor {
         GroupPrincipal group = new GroupPrincipal(
             entity.getSAMAccountName() + "@" + domain.get(entity), namespace);
         List<Principal> def = new ArrayList<Principal>();
-        if (members.containsKey(entity)) {
-          for (String memberDn : members.get(entity)) {
-            AdEntity member = byDn.get(memberDn);
-            if (member == null) {
-              log.info("Unknown member [" + memberDn + "] of group ["
-                  + entity.getDn());
-              continue;
-            }
-            Principal p;
-            if (member.isGroup()) {
-              p = new GroupPrincipal(member.getSAMAccountName() + "@"
-                  + domain.get(entity), namespace);
-            } else {
-              p = new UserPrincipal(member.getSAMAccountName() + "@"
-                  + domain.get(entity), namespace);
-            }
-            def.add(p);
-          }
+        if (!members.containsKey(entity)) {
+          continue;
         }
+        for (String memberDn : members.get(entity)) {
+          AdEntity member = byDn.get(memberDn);
+          if (member == null) {
+            log.info("Unknown member [" + memberDn + "] of group ["
+                + entity.getDn());
+            continue;
+          }
+          Principal p;
+          if (member.isGroup()) {
+            p = new GroupPrincipal(member.getSAMAccountName() + "@"
+                + domain.get(entity), namespace);
+          } else {
+            p = new UserPrincipal(member.getSAMAccountName() + "@"
+                + domain.get(entity), namespace);
+          }
+          def.add(p);
+        }
+        // TODO(pjo): send empty groups?
         if (0 != def.size()) {
           groups.put(group, def);
         }
       }
-      if (log.isLoggable(Level.FINE)) {
-        log.fine("number of groups defined: " + groups.keySet().size());
-      }
+      log.log(Level.FINE, "number of groups defined: {0}",
+           groups.keySet().size());
       if (log.isLoggable(Level.FINER)) {
         int numGroups = groups.keySet().size();
         int totalMembers = 0;
