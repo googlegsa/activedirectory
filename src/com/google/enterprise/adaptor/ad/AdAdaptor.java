@@ -56,7 +56,6 @@ public class AdAdaptor extends AbstractAdaptor {
     namespace = context.getConfig().getValue("ad.namespace");
     log.config("common namespace: " + namespace);
     defaultUser = context.getConfig().getValue("ad.defaultUser");
-    log.config("common user: " + defaultUser);
     defaultPassword = context.getConfig().getValue("ad.defaultPassword");
 
     List<Map<String, String>> serverConfigs
@@ -74,14 +73,17 @@ public class AdAdaptor extends AbstractAdaptor {
       String passwd = singleServerConfig.get("password");
       if (null == principal || principal.isEmpty()) {
         principal = defaultUser;
-      }
-      if (null == passwd || passwd.isEmpty()) {
-        passwd = defaultPassword;
+        if (null == passwd || passwd.isEmpty()) {
+          passwd = defaultPassword;
+        } else {
+          String err = "password without user for " + host;
+          throw new IllegalStateException(err);
+        }
       }
       AdServer adServer = new AdServer(method, host, port, principal, passwd);
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
-      dup.put("password", "XXXXXX");
+      dup.put("password", "XXXXXX");  // hide password
       log.config("AD server spec: " + dup);
     }
   }
@@ -99,9 +101,10 @@ public class AdAdaptor extends AbstractAdaptor {
 
   /** Pushes all groups from all AdServers. */
   @Override
-  public void getDocIds(DocIdPusher pusher) throws InterruptedException {
-    // TODO: implement well known groups
-    // TODO: implement built in groups
+  public void getDocIds(DocIdPusher pusher) throws InterruptedException,
+      IOException {
+    // TODO(pjo): implement well known groups
+    // TODO(pjo): implement built in groups
     GroupCatalog cumulativeCatalog = new GroupCatalog();
     for (AdServer server : servers) {
       server.initialize();
@@ -111,21 +114,24 @@ public class AdAdaptor extends AbstractAdaptor {
         cumulativeCatalog.add(catalog);
       } catch (InterruptedNamingException ine) {
         String host = server.getHostName();
-        log.log(Level.WARNING, "skipping " + host, ine);
+        throw new IOException("could not get entities from " + host, ine);
       }
     } 
     cumulativeCatalog.resolveForeignSecurityPrincipals();
-    pusher.pushGroupDefinitions(cumulativeCatalog.makeDefs(), CASE_SENSITIVITY);
+    Map<GroupPrincipal, List<Principal>> groups = cumulativeCatalog.makeDefs();
+    cumulativeCatalog.clear();
+    cumulativeCatalog = null;
+    pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
   }
 
   // Space for all group info, organized in different ways
   private class GroupCatalog {
     Set<AdEntity> entities = new HashSet<AdEntity>();
-    Map<AdEntity, Set<String>> members = new HashMap<AdEntity, Set<String>>();
-    Map<AdEntity, String> domain = new HashMap<AdEntity, String>();
 
     Map<String, AdEntity> bySid = new HashMap<String, AdEntity>();
     Map<String, AdEntity> byDn = new HashMap<String, AdEntity>();
+    Map<AdEntity, Set<String>> members = new HashMap<AdEntity, Set<String>>();
+    Map<AdEntity, String> domain = new HashMap<AdEntity, String>();
    
     void readFrom(AdServer server) throws InterruptedNamingException {
       entities = server.search(AdConstants.LDAP_QUERY, /*deleted=*/ false,
@@ -139,16 +145,23 @@ public class AdAdaptor extends AbstractAdaptor {
               AdConstants.ATTR_MEMBER}
       );
       int n = entities.size();
-      log.log(Level.FINE, "received " + n + " entities from server");
+      log.fine("received " + n + " entities from server");
       for (AdEntity e : entities) {
         bySid.put(e.getSid(), e);
         byDn.put(e.getDn(), e);
+        // TODO(pjo): Have AdServer put domain into AdEntity during search
         domain.put(e, server.getnETBIOSName());
+      }
+      for (AdEntity entity : entities) {
+        if (entity.isGroup()) {
+          members.put(entity, new TreeSet<String>(entity.getMembers()));
+        }
       }
       resolvePrimaryGroups();
     }
 
     private void resolvePrimaryGroups() {
+      int nadds = 0;
       for (AdEntity e : entities) {
         if (e.isGroup()) {
           continue;
@@ -159,34 +172,44 @@ public class AdAdaptor extends AbstractAdaptor {
           members.put(primaryGroup, new TreeSet<String>());
         }
         members.get(primaryGroup).add(user.getDn());
+        nadds++;
       }
+      log.fine("number of primary groups: " + members.keySet().size());
+      log.fine("number of users added to all primary groups: " + nadds);
     }
 
     void resolveForeignSecurityPrincipals() {
+      int nGroups = 0;
+      int nNullSid = 0;
+      int nNullResolution = 0;
+      int nResolved = 0;
       for (AdEntity entity : entities) {
         if (!entity.isGroup()) {
           continue;
         }
-        if (!members.containsKey(entity)) {
-          continue;
-        }
+        nGroups++;
         Set<String> resolvedMembers = new HashSet<String>();
         for (String member : members.get(entity)) {
           String sid = AdEntity.parseForeignSecurityPrincipal(member);
           if (null == sid) {
             resolvedMembers.add(member);
+            nNullSid++;
           } else {
             AdEntity resolved = bySid.get(sid);
             if (null == resolved) {
               log.info("unable to resolve foreign principal ["
                   + member + "]; member of [" + entity.getDn());
+              nNullResolution++;
             } else {
               resolvedMembers.add(resolved.getDn());
+              nResolved++;
             }
           }
         }
         members.put(entity, resolvedMembers);
       }
+      log.fine("#groups, #null-SID, #null-resolve, #resolve: " + nGroups
+          + ", " + nNullSid + ", " + nNullResolution + ", " + nResolved);
     }
 
     Map<GroupPrincipal, List<Principal>> makeDefs() {
@@ -218,7 +241,9 @@ public class AdAdaptor extends AbstractAdaptor {
             def.add(p);
           }
         }
-        groups.put(group, def);
+        if (0 != def.size()) {
+          groups.put(group, def);
+        }
       }
       if (log.isLoggable(Level.FINE)) {
         log.fine("number of groups defined: " + groups.keySet().size());
@@ -244,6 +269,14 @@ public class AdAdaptor extends AbstractAdaptor {
       bySid.putAll(other.bySid);
       byDn.putAll(other.byDn);
       domain.putAll(other.domain);
+    }
+
+    void clear() {
+      entities.clear();
+      members.clear();
+      bySid.clear();
+      byDn.clear();
+      domain.clear();
     }
   }
 }
