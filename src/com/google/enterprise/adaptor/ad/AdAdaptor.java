@@ -25,6 +25,7 @@ import com.google.enterprise.adaptor.Response;
 import com.google.enterprise.adaptor.UserPrincipal;
 
 import java.io.*;
+import java.text.MessageFormat;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -41,6 +42,7 @@ public class AdAdaptor extends AbstractAdaptor {
   private String defaultUser;  // used if an AD doesn't override
   private String defaultPassword;  
   private List<AdServer> servers = new ArrayList<AdServer>();
+  private Map<String, String> localizedStrings;
 
   @Override
   public void initConfig(Config config) {
@@ -48,6 +50,10 @@ public class AdAdaptor extends AbstractAdaptor {
     config.addKey("adaptor.namespace", "Default");
     config.addKey("ad.defaultUser", null);
     config.addKey("ad.defaultPassword", null);
+    config.addKey("ad.localized.Everyone", "Everyone");
+    config.addKey("ad.localized.NTAuthority", "NT Authority");
+    config.addKey("ad.localized.Interactive", "Interactive");
+    config.addKey("ad.localized.AuthenticatedUsers", "Authenticated Users");
   }
 
   @Override
@@ -96,6 +102,7 @@ public class AdAdaptor extends AbstractAdaptor {
       dup.put("password", "XXXXXX");  // hide password
       log.log(Level.CONFIG, "AD server spec: {0}", dup);
     }
+    localizedStrings = context.getConfig().getValuesWithPrefix("ad.localized.");    
   }
 
   /** This adaptor does not serve documents. */
@@ -113,7 +120,6 @@ public class AdAdaptor extends AbstractAdaptor {
   @Override
   public void getDocIds(DocIdPusher pusher) throws InterruptedException,
       IOException {
-    // TODO(pjo): implement well known groups
     // TODO(pjo): implement built in groups
     GroupCatalog cumulativeCatalog = new GroupCatalog();
     for (AdServer server : servers) {
@@ -142,7 +148,50 @@ public class AdAdaptor extends AbstractAdaptor {
     Map<String, AdEntity> bySid = new HashMap<String, AdEntity>();
     Map<String, AdEntity> byDn = new HashMap<String, AdEntity>();
     Map<AdEntity, String> domain = new HashMap<AdEntity, String>();
-   
+    
+    final AdEntity everyone = new AdEntity("S-1-1-0",
+        MessageFormat.format("CN={0}",
+        localizedStrings.get("Everyone"))); 
+    final AdEntity interactive = new AdEntity("S-1-5-4", 
+        MessageFormat.format("CN={0},DC={1}",
+        localizedStrings.get("Interactive"),
+        localizedStrings.get("NTAuthority")));
+    final AdEntity authenticatedUsers = new AdEntity("S-1-5-11" ,
+        MessageFormat.format("CN={0},DC={1}", 
+        localizedStrings.get("AuthenticatedUsers"), 
+        localizedStrings.get("NTAuthority")));
+    final Map<AdEntity, Set<String>> wellKnownMembership;
+    
+    public GroupCatalog() {
+      wellKnownMembership = new HashMap<AdEntity, Set<String>>();
+      wellKnownMembership.put(everyone, new TreeSet<String>());
+      wellKnownMembership.put(interactive, new TreeSet<String>());
+      wellKnownMembership.put(authenticatedUsers, new TreeSet<String>());
+      
+      // To save space on GSA onboard groups database, we add "everyone" as a
+      // member to "Interactive" and "authenticated users" groups.
+      // Each user from domain will be added as member of "everyone" group 
+      // and user will be indirect member for 
+      // "Interactive" and "authenticated users" groups.
+      wellKnownMembership.get(interactive).add(everyone.getDn());
+      wellKnownMembership.get(authenticatedUsers).add(everyone.getDn());
+      
+      entities.add(everyone);
+      entities.add(interactive);
+      entities.add(authenticatedUsers);
+      
+      bySid.put(everyone.getSid(), everyone);
+      byDn.put(everyone.getDn(), everyone);
+      
+      bySid.put(interactive.getSid(), interactive);
+      byDn.put(interactive.getDn(), interactive);
+      domain.put(interactive, localizedStrings.get("NTAuthority"));
+      
+      bySid.put(authenticatedUsers.getSid(), authenticatedUsers);
+      byDn.put(authenticatedUsers.getDn(), authenticatedUsers);
+      domain.put(authenticatedUsers, localizedStrings.get("NTAuthority"));
+    }
+    
     void readFrom(AdServer server) throws InterruptedNamingException {
       entities = server.search(AdConstants.LDAP_QUERY, /*deleted=*/ false,
           new String[] {
@@ -185,6 +234,7 @@ public class AdAdaptor extends AbstractAdaptor {
           members.put(primaryGroup, new TreeSet<String>());
         }
         members.get(primaryGroup).add(user.getDn());
+        wellKnownMembership.get(everyone).add(user.getDn());
         nadds++;
       }
       log.log(Level.FINE, "# primary groups: {0}", members.keySet().size());
@@ -197,7 +247,7 @@ public class AdAdaptor extends AbstractAdaptor {
       int nNullResolution = 0;
       int nResolved = 0;
       for (AdEntity entity : entities) {
-        if (!entity.isGroup()) {
+        if (!entity.isGroup() || entity.isWellKnown()) {
           continue;
         }
         nGroups++;
@@ -228,19 +278,23 @@ public class AdAdaptor extends AbstractAdaptor {
     }
 
     Map<GroupPrincipal, List<Principal>> makeDefs() {
+      // Merge members with well known group members
+      Map<AdEntity, Set<String>> allMembers 
+          = new HashMap<AdEntity,Set<String>>(members);
+      allMembers.putAll(wellKnownMembership);
       Map<GroupPrincipal, List<Principal>> groups
           = new HashMap<GroupPrincipal, List<Principal>>();
       for (AdEntity entity : entities) {
         if (!entity.isGroup()) {
           continue;
         }
-        GroupPrincipal group = new GroupPrincipal(
-            entity.getSAMAccountName() + "@" + domain.get(entity), namespace);
+        String groupName = getPrincipalName(entity);
+        GroupPrincipal group = new GroupPrincipal(groupName, namespace);
         List<Principal> def = new ArrayList<Principal>();
-        if (!members.containsKey(entity)) {
+        if (!allMembers.containsKey(entity)) {
           continue;
         }
-        for (String memberDn : members.get(entity)) {
+        for (String memberDn : allMembers.get(entity)) {
           AdEntity member = byDn.get(memberDn);
           if (member == null) {
             log.info("Unknown member [" + memberDn + "] of group ["
@@ -248,14 +302,17 @@ public class AdAdaptor extends AbstractAdaptor {
             continue;
           }
           Principal p;
+          String memberName = getPrincipalName(member);
           if (member.isGroup()) {
-            p = new GroupPrincipal(member.getSAMAccountName() + "@"
-                + domain.get(entity), namespace);
+            p = new GroupPrincipal(memberName, namespace);
           } else {
-            p = new UserPrincipal(member.getSAMAccountName() + "@"
-                + domain.get(entity), namespace);
+            p = new UserPrincipal(memberName, namespace);
           }
           def.add(p);
+        }
+        if (entity.isWellKnown()) {
+          log.log(Level.FINE, "Well known group {0} with # members {1}",
+              new Object[]{group, def.size()});
         }
         // TODO(pjo): send empty groups?
         if (0 != def.size()) {
@@ -277,6 +334,16 @@ public class AdAdaptor extends AbstractAdaptor {
       }
       return groups;
     }
+    
+    /*
+     * returns principal name for ADEntity object. if domain is available return
+     * principal name as samaccountname@domain else just use samaccountname as 
+     * principal name.
+     */
+    String getPrincipalName(AdEntity e) {
+      return domain.get(e) != null ?
+          e.getSAMAccountName() + "@" + domain.get(e) : e.getSAMAccountName();
+    } 
 
     /* Combines info of another catalog with this one. */
     void add(GroupCatalog other) {
@@ -285,6 +352,14 @@ public class AdAdaptor extends AbstractAdaptor {
       bySid.putAll(other.bySid);
       byDn.putAll(other.byDn);
       domain.putAll(other.domain);
+      //TODO: Add equal method to AdEntity so that we can loop here on keyset
+      // for wellKnownMembership
+      wellKnownMembership.get(everyone).addAll(
+          other.wellKnownMembership.get(other.everyone));
+      wellKnownMembership.get(interactive).addAll(
+          other.wellKnownMembership.get(other.interactive));
+      wellKnownMembership.get(authenticatedUsers).addAll(
+          other.wellKnownMembership.get(other.authenticatedUsers));
     }
 
     void clear() {
@@ -293,6 +368,7 @@ public class AdAdaptor extends AbstractAdaptor {
       bySid.clear();
       byDn.clear();
       domain.clear();
+      wellKnownMembership.clear();
     }
   }
 }

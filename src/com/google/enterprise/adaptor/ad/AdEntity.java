@@ -99,6 +99,7 @@ public class AdEntity {
   public AdEntity(String sid, String dn) {
     this.sid = sid;
     this.dn = dn;
+    members = new HashSet<String>();
     objectGUID = sid;
     sAMAccountName = getCommonName();
     wellKnown = true;
@@ -251,6 +252,10 @@ public class AdEntity {
   */
   public boolean isGroup() {
     return primaryGroupId == null;
+  }
+  
+  public boolean isWellKnown() {
+    return wellKnown;
   }
 
   /**
