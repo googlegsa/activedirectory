@@ -43,6 +43,7 @@ public class AdAdaptor extends AbstractAdaptor {
   private String defaultPassword;  
   private List<AdServer> servers = new ArrayList<AdServer>();
   private Map<String, String> localizedStrings;
+  private boolean feedBuiltinGroups;
 
   @Override
   public void initConfig(Config config) {
@@ -54,6 +55,8 @@ public class AdAdaptor extends AbstractAdaptor {
     config.addKey("ad.localized.NTAuthority", "NT Authority");
     config.addKey("ad.localized.Interactive", "Interactive");
     config.addKey("ad.localized.AuthenticatedUsers", "Authenticated Users");
+    config.addKey("ad.localized.Builtin", "BUILTIN");
+    config.addKey("ad.feedBuiltinGroups", "false");
   }
 
   @Override
@@ -62,6 +65,8 @@ public class AdAdaptor extends AbstractAdaptor {
     log.config("common namespace: " + namespace);
     defaultUser = context.getConfig().getValue("ad.defaultUser");
     defaultPassword = context.getConfig().getValue("ad.defaultPassword");
+    feedBuiltinGroups = Boolean.parseBoolean(
+        context.getConfig().getValue("ad.feedBuiltinGroups"));
 
     List<Map<String, String>> serverConfigs
         = context.getConfig().getListOfConfigs("ad.servers");
@@ -208,7 +213,8 @@ public class AdAdaptor extends AbstractAdaptor {
         bySid.put(e.getSid(), e);
         byDn.put(e.getDn(), e);
         // TODO(pjo): Have AdServer put domain into AdEntity during search
-        domain.put(e, server.getnETBIOSName());
+        domain.put(e, e.getSid().startsWith("S-1-5-32-") ? 
+            localizedStrings.get("Builtin") : server.getnETBIOSName());
       }
       initializeMembers();
       resolvePrimaryGroups();
@@ -288,12 +294,22 @@ public class AdAdaptor extends AbstractAdaptor {
         if (!entity.isGroup()) {
           continue;
         }
-        String groupName = getPrincipalName(entity);
-        GroupPrincipal group = new GroupPrincipal(groupName, namespace);
-        List<Principal> def = new ArrayList<Principal>();
+
         if (!allMembers.containsKey(entity)) {
           continue;
         }
+
+        String groupName = getPrincipalName(entity);
+        GroupPrincipal group = new GroupPrincipal(groupName, namespace);
+        List<Principal> def = new ArrayList<Principal>();
+
+        if(!feedBuiltinGroups 
+            && entity.getSid().startsWith("S-1-5-32-")) {
+          log.log(Level.FINER, "Sending empty BUILTIN Group {0}", entity);
+          groups.put(group, def);
+          continue;        
+        }
+        
         for (String memberDn : allMembers.get(entity)) {
           AdEntity member = byDn.get(memberDn);
           if (member == null) {
@@ -314,10 +330,7 @@ public class AdAdaptor extends AbstractAdaptor {
           log.log(Level.FINE, "Well known group {0} with # members {1}",
               new Object[]{group, def.size()});
         }
-        // TODO(pjo): send empty groups?
-        if (0 != def.size()) {
-          groups.put(group, def);
-        }
+        groups.put(group, def);
       }
       log.log(Level.FINE, "number of groups defined: {0}",
            groups.keySet().size());
