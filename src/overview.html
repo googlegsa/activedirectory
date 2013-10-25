@@ -1,5 +1,71 @@
 <body>
-Active Directory Adaptor Deployment Guide
+<h3 id="adadaptor">Deployment of Active Directory Adaptor</h3>
 
-TODO: Write deployment guide
+<p>A single instance of Active Directory adaptor can acquire
+and resolve groups from multiple Active Directory servers.
+
+<h4>Requirements</h4>
+<ul>
+  <li>GSA 7.2 or higher
+  <li>Java JRE 1.6u27 or higher installed on computer that runs adaptor
+  <li>Active Directory Adaptor JAR executable
+  <li>Credentials for Active Directory servers to be read
+</ul>
+
+<h4>Configure GSA for Adaptor</h4>
+<ol>
+  <li>Add the IP address of the computer that hosts the adaptor to the <b>List
+    of Trusted IP Addresses</b> on the GSA.
+    <p>In the GSA's Admin Console, go to <b>Crawl and Index &gt; Feeds</b>,
+    and scroll down to <b>List of Trusted IP Addresses</b>. Add the IP address
+    for the adaptor to the list.
+</ol>
+
+<h4>Configure Adaptor</h4>
+<ol>
+  <li>Create a file named <code>adaptor-config.properties</code> in the
+  directory that contains the adaptor binary. The configuration can
+  be for multiple AD servers. The variable <code>ad.servers</code>
+  contains a list of server identifiers.
+  <p>
+  Here is an example configuration (bold items are example values to be
+  replaced):
+<pre>
+gsa.hostname=<b>yourgsa.example.com</b>
+ad.domain=<b>example.com</b>
+ad.defaultUser=<b>Admin</b>
+ad.defaultPassword=<b>PassW0RD</b>
+ad.servers=<b>firstServer,anotherAdServer</b>
+ad.servers.firstServer.host=<b>111.111.111.111</b>
+ad.servers.firstServer.method=standard
+ad.servers.firstServer.port=389
+ad.servers.firstServer.user=<b>EXAMPLE\\Administrator</b>
+ad.servers.firstServer.password=<b>yourpassword</b>
+ad.servers.anotherAdServer.host=<b>222.222.222.222</b>
+ad.servers.anotherAdServer.method=standard
+ad.servers.anotherAdServer.port=389
+</pre>
+  <p>
+  Notice: <code>ad.defaultUser</code> can be overriden by providing particular
+  <code>user</code> for a particular server.<br>
+  Notice: <code>ad.defaultPassword</code> can be overriden by providing particular
+  <code>password</code> for a particular server.<br>
+
+  <li> Create file named <code>logging.properties</code> in the same directory
+  that contains adaptor binary:
+  <pre>
+.level=INFO
+handlers=java.util.logging.FileHandler,java.util.logging.ConsoleHandler
+java.util.logging.FileHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
+java.util.logging.FileHandler.pattern=logs/adaptor.%g.log
+java.util.logging.FileHandler.limit=10485760
+java.util.logging.FileHandler.count=20
+java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
+</pre>
+
+  <li><p>Create a directory named logs in the same directory that contains logging.properties.
+
+  <li><p>Run the adaptor using:
+  <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-ad-YYYYMMDD-withlib.jar</pre>
+</ol>
 </body>
