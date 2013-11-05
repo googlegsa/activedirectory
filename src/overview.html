@@ -16,7 +16,7 @@ and resolve groups from multiple Active Directory servers.
 <ol>
   <li>Add the IP address of the computer that hosts the adaptor to the <b>List
     of Trusted IP Addresses</b> on the GSA.
-    <p>In the GSA's Admin Console, go to <b>Crawl and Index &gt; Feeds</b>,
+    <p>In the GSA's Admin Console, go to <b>Content Sources &gt; Feeds</b>,
     and scroll down to <b>List of Trusted IP Addresses</b>. Add the IP address
     for the adaptor to the list.
 </ol>
@@ -63,9 +63,70 @@ java.util.logging.FileHandler.count=20
 java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
 </pre>
 
-  <li><p>Create a directory named logs in the same directory that contains logging.properties.
+  <li><p>Create a directory named <code>logs</code> in the same
+    directory that contains logging.properties.
 
   <li><p>Run the adaptor using:
   <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-ad-YYYYMMDD-withlib.jar</pre>
 </ol>
+
+<h4>Running as service on Windows</h4>
+ <p>Example execution with jsvc:
+ <pre>jsvc -pidfile adaptor.pid -cp adaptor-ad-YYYYMMDD-withlib.jar \
+    com.google.enterprise.adaptor.Daemon com.google.enterprise.adaptor.ad.AdAdaptor</pre>
+
+<h4>Optional <code>adaptor-config.properties</code> fields</h4>
+<dl>
+
+  <dt>
+  <code>ad.localized.Everyone</code>
+  </dt>
+  <dd>
+  Name of Everyone group. Defaults to "Everyone".
+  </dd>
+
+  <dt>
+  <code>ad.localized.NTAuthority</code>
+  </dt>
+  <dd>
+  Name of NT Authority group. Defaults to "NT Authority".
+  </dd>
+
+  <dt>
+  <code>ad.localized.Interactive</code>
+  </dt>
+  <dd>
+  Name of Interactive group. Defaults to "Interactive".
+  </dd>
+
+  <dt>
+  <code>ad.localized.AuthenticatedUsers</code>
+  </dt>
+  <dd>
+  Name of Authenticated Users group. Defaults to "Authenticated Users".
+  </dd>
+
+  <dt>
+  <code>ad.localized.Builtin</code>
+  </dt>
+  <dd>
+  Prefix for builtin group names. Defaults to "BUILTIN".
+  </dd>
+
+  <dt>
+  <code>ad.feedBuiltinGroups</code>
+  </dt>
+  <dd>
+  Whether to feed in builtin groups. Defaults to false.
+  </dd>
+
+  <dt>
+  <code>adaptor.namespace</code>
+  </dt>
+  <dd>
+  Namespace to use on ACLs sent to GSA.  Defaults to "Default".
+  </dd>
+
+</dl>
+
 </body>
