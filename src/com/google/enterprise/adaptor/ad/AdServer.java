@@ -14,7 +14,7 @@
 
 package com.google.enterprise.adaptor.ad;
 
-import com.google.common.base.Strings;
+import com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
 import java.sql.Timestamp;
@@ -48,18 +48,14 @@ public class AdServer {
   private static final Logger LOGGER
       = Logger.getLogger(AdServer.class.getName());
 
-  protected LdapContext ldapContext = null;
+  private LdapContext ldapContext = null;
   private SearchControls searchCtls;
 
   // properties necessary for connection
-  private String hostName;
-  private int port;
-  private String principal;
-  private String password;
+  private final String hostName;
 
   // retrieved properties of the Active Directory controller
   private String nETBIOSName;
-  private Method connectMethod;
   private String dn;
   private String configurationNamingContext;
   private String dsServiceName;
@@ -67,10 +63,27 @@ public class AdServer {
   private long highestCommittedUSN;
   private String invocationID;
   private String dnsRoot;
-  private Timestamp lastFullSync;
 
   public AdServer(Method connectMethod, String hostName,
       int port, String principal, String password) {
+    this(hostName, createLdapContext(connectMethod, hostName, port,
+        principal, password));
+  }
+
+  @VisibleForTesting
+  AdServer(String hostName, LdapContext ldapContext) {
+    this.hostName = hostName;
+    this.ldapContext = ldapContext;
+    searchCtls = new SearchControls();
+    searchCtls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+  }
+
+  /**
+   * Called (only) by public constructor
+   */
+  private static LdapContext createLdapContext(Method connectMethod,
+      String hostName, int port, String principal, String password) {
+    Hashtable<String, String> env = new Hashtable<String, String>();
     if (null == connectMethod || null == hostName
         || null == principal || null == password) {
       throw new NullPointerException();
@@ -84,86 +97,64 @@ public class AdServer {
     if ("".equals(password)) {
       throw new IllegalArgumentException("password needs to be non-empty");
     }
-    this.hostName = hostName;
-    this.port = port;
-    this.principal = principal;
-    this.password = password;
-    searchCtls = new SearchControls();
-    searchCtls.setSearchScope(SearchControls.SUBTREE_SCOPE);
-    this.connectMethod = connectMethod;
+
+    // Use the built-in LDAP support.
+    env.put(Context.INITIAL_CONTEXT_FACTORY,
+        "com.sun.jndi.ldap.LdapCtxFactory");
+    // Connecting to configuration naming context is very slow for crawl users
+    // in large multidomain environment, which belong to thousands of groups
+    // TODO: make this configurable
+    env.put("com.sun.jndi.ldap.read.timeout", "90000");
+    env.put(Context.SECURITY_AUTHENTICATION, "simple");
+    env.put(Context.SECURITY_PRINCIPAL, principal);
+    env.put(Context.SECURITY_CREDENTIALS, password);
+
+    String ldapUrl =
+        connectMethod.protocol() + hostName + ":" + port;
+    LOGGER.info("LDAP provider url: " + ldapUrl);
+    env.put(Context.PROVIDER_URL, ldapUrl);
+    try {
+      return new InitialLdapContext(env, null);
+    } catch (NamingException ne) {
+      throw new AssertionError(ne);
+    }
   }
 
   /**
    * Connects to the Active Directory server and retrieves AD configuration
    * information.
-   * 
-   * This method is used for crawling as well as authorization of credentials 
+   *
+   * This method is used for crawling as well as authorization of credentials
    * against Active Directory.
    */
   public void connect() throws CommunicationException, NamingException {
-    Hashtable<String, String> env = new Hashtable<String, String>();
-
-    // Use the built-in LDAP support.
-    env.put(Context.INITIAL_CONTEXT_FACTORY,
-        AdConstants.COM_SUN_JNDI_LDAP_LDAP_CTX_FACTORY);
-    // Connecting to configuration naming context is very slow for crawl users
-    // in large multidomain environment, which belong to thousands of groups
-    // TODO: make this configurable
-    env.put("com.sun.jndi.ldap.read.timeout", "90000");
-    if (Strings.isNullOrEmpty(principal)) {
-      env.put(Context.SECURITY_AUTHENTICATION, 
-          AdConstants.AUTHN_TYPE_ANONYMOUS);
-    } else {
-      env.put(Context.SECURITY_AUTHENTICATION,
-          AdConstants.AUTHN_TYPE_SIMPLE);
-      env.put(Context.SECURITY_PRINCIPAL, principal);
-      env.put(Context.SECURITY_CREDENTIALS, password);
-    }
-
-    String ldapUrl =
-        connectMethod.protocol() + hostName + AdConstants.COLON + port;
-    LOGGER.info("LDAP provider url: " + ldapUrl);
-    env.put(Context.PROVIDER_URL, ldapUrl);
-    ldapContext = new InitialLdapContext(env, null);
-
-    Attributes attributes = ldapContext.getAttributes(AdConstants.EMPTY);
-    dn = attributes.get(
-        AdConstants.ATTR_DEFAULTNAMINGCONTEXT).get(0).toString();
-    dsServiceName = attributes.get(
-        AdConstants.ATTR_DSSERVICENAME).get(0).toString();
+    Attributes attributes = ldapContext.getAttributes("");
+    dn = attributes.get("defaultNamingContext").get(0).toString();
+    dsServiceName = attributes.get("dsServiceName").get(0).toString();
     highestCommittedUSN = Long.parseLong(attributes.get(
-        AdConstants.ATTR_HIGHESTCOMMITTEDUSN).get(0).toString());
+        "highestCommittedUSN").get(0).toString());
     configurationNamingContext = attributes.get(
-        AdConstants.ATTR_CONFIGURATIONNAMINGCONTEXT).get(0).toString();
+        "configurationNamingContext").get(0).toString();
   }
 
   public void initialize() {
     try {
       connect();
       sid = AdEntity.getTextSid((byte[])get(
-          AdConstants.ATTR_DISTINGUISHEDNAME + AdConstants.EQUALS + dn,
-          AdConstants.ATTR_OBJECTSID, dn));
+          "distinguishedName=" + dn, "objectSid;binary", dn));
       invocationID = AdEntity.getTextGuid((byte[]) get(
-          AdConstants.ATTR_DISTINGUISHEDNAME
-          + AdConstants.EQUALS + dsServiceName,
-          AdConstants.ATTR_INVOCATIONID,
-          dsServiceName));
-    } catch (CommunicationException e) {
-      throw new IllegalStateException(e);
-    } catch (AuthenticationNotSupportedException e) {
-      throw new IllegalStateException(e);
-    } catch (AuthenticationException e) {
-      throw new IllegalStateException(e);
+          "distinguishedName=" + dsServiceName,
+          "invocationID;binary", dsServiceName));
     } catch (NamingException e) {
-      throw new IllegalStateException(e);
+      throw new RuntimeException(e);
     }
 
-    LOGGER.info("Sucessfully created an Initial LDAP context");
+    LOGGER.info("Successfully created an Initial LDAP context");
 
     nETBIOSName = (String) get("(ncName=" + dn + ")",
-        AdConstants.ATTR_NETBIOSNAME, configurationNamingContext);
-    dnsRoot = (String) get("(ncName=" + dn + ")",
-        AdConstants.ATTR_DNSROOT, configurationNamingContext);
+        "nETBIOSName", configurationNamingContext);
+    dnsRoot = (String) get("(ncName=" + dn + ")", "dnsRoot",
+        configurationNamingContext);
     LOGGER.log(Level.INFO, "Connected to domain (dn = " + dn + ", netbios = "
         + nETBIOSName + ", hostname = " + hostName + ", dsServiceName = "
         + dsServiceName + ", highestCommittedUSN = " + highestCommittedUSN
@@ -200,7 +191,7 @@ public class AdServer {
   }
 
   /**
-   * Set request controls on the LDAP query 
+   * Set request controls on the LDAP query
    * @param deleted include deleted control
    */
   private void setControls(boolean deleted) {
@@ -245,7 +236,7 @@ public class AdServer {
           SearchResult sr = ldapResults.next();
           try {
             results.add(new AdEntity(sr));
-          } catch (Exception ex) {           
+          } catch (Exception ex) {
             // It is possible that Search Result returned is missing
             // few attributes required to construct AD Entity object.
             // Such results will be ignored.
@@ -279,8 +270,8 @@ public class AdServer {
         int batch = g.getMembers().size();
         int start = g.getMembers().size();
         do {
-          String memberRange = String.format(AdConstants.ATTR_MEMBER_RANGE, 
-              start, start + batch - 1);
+          String memberRange = String.format("member;Range=%d-%d", start,
+              start + batch - 1);
           LOGGER.finest(
               "Retrieving additional groups for [" + g + "] " + memberRange);
           searchCtls.setReturningAttributes(new String[] {memberRange});
@@ -302,26 +293,6 @@ public class AdServer {
           e);
     }
     return results;
-  }
-
-  /**
-   * Generate properties to be used for parameter binding in JDBC
-   * @return map of names and properties of current object
-   */
-  public Map<String, Object> getSqlParams() {
-    HashMap<String, Object> map = new HashMap<String, Object>();
-    map.put(AdConstants.DB_DN, dn);
-    map.put(AdConstants.DB_DSSERVICENAME, dsServiceName);
-    map.put(AdConstants.DB_INVOCATIONID, invocationID);
-    map.put(AdConstants.DB_HIGHESTCOMMITTEDUSN, highestCommittedUSN);
-    map.put(AdConstants.DB_NETBIOSNAME, nETBIOSName);
-    map.put(AdConstants.DB_SID, sid);
-    map.put(AdConstants.DB_DNSROOT, dnsRoot);
-    if (lastFullSync != null) {
-      map.put(AdConstants.DB_LASTFULLSYNC,
-          new java.sql.Timestamp(lastFullSync.getTime()));
-    }
-    return map;
   }
 
   /**
@@ -374,20 +345,6 @@ public class AdServer {
     }
   }
 
-  /**
-   * @return the lastFullSync
-   */
-  public Timestamp getLastFullSync() {
-    return lastFullSync;
-  }
-
-  /**
-   * @param lastFullSync the lastFullSync to set
-   */
-  public void setLastFullSync(Timestamp lastFullSync) {
-    this.lastFullSync = lastFullSync;
-  }
-  
   @Override
   public String toString() {
     return "[" + nETBIOSName + "] ";
