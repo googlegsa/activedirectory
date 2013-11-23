@@ -48,8 +48,8 @@ public class AdServer {
   private static final Logger LOGGER
       = Logger.getLogger(AdServer.class.getName());
 
-  private LdapContext ldapContext = null;
-  private SearchControls searchCtls;
+  private final LdapContext ldapContext;
+  private final SearchControls searchCtls;
 
   // properties necessary for connection
   private final String hostName;
@@ -109,9 +109,8 @@ public class AdServer {
     env.put(Context.SECURITY_PRINCIPAL, principal);
     env.put(Context.SECURITY_CREDENTIALS, password);
 
-    String ldapUrl =
-        connectMethod.protocol() + hostName + ":" + port;
-    LOGGER.info("LDAP provider url: " + ldapUrl);
+    String ldapUrl = connectMethod.protocol() + hostName + ":" + port;
+    LOGGER.config("LDAP provider url: " + ldapUrl);
     env.put(Context.PROVIDER_URL, ldapUrl);
     try {
       return new InitialLdapContext(env, null);
@@ -140,7 +139,7 @@ public class AdServer {
   public void initialize() {
     try {
       connect();
-      sid = AdEntity.getTextSid((byte[])get(
+      sid = AdEntity.getTextSid((byte[]) get(
           "distinguishedName=" + dn, "objectSid;binary", dn));
       invocationID = AdEntity.getTextGuid((byte[]) get(
           "distinguishedName=" + dsServiceName,

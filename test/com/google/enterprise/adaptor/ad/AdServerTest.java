@@ -64,7 +64,6 @@ public class AdServerTest {
   @Test
   public void testIAEOnEmptyPrincipal() throws Exception {
     thrown.expect(IllegalArgumentException.class);
-    MockLdapContext ldapContext = new MockLdapContext();
     AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "", "pw");
   }
 
@@ -123,13 +122,13 @@ public class AdServerTest {
         SearchControls searchControls) throws NamingException {
         if (!("dn=empty".equals(filter))) {
           return super.search(base, filter, searchControls);
-        };
+        }
         // prepare "broken" SearchResult
         Vector<SearchResult> brokenSRs = new Vector<SearchResult>();
         brokenSRs.add(new SearchResult("search result name", brokenSRs,
-          new BasicAttributes()));
+            new BasicAttributes()));
         return new MockLdapContext.SearchResultsNamingEnumeration(brokenSRs);
-      };
+      }
     };
     addStandardKeysAndResults(ldapContext);
     ldapContext.addSearchResult("dn=empty", "attr1", "basedn", "val1");
@@ -146,9 +145,9 @@ public class AdServerTest {
         SearchControls searchControls) throws NamingException {
         if (!("dn=empty".equals(filter))) {
           return super.search(base, filter, searchControls);
-        };
+        }
         throw new NamingException("Gotcha");
-      };
+      }
     };
     addStandardKeysAndResults(ldapContext);
     ldapContext.addSearchResult("dn=empty", "attr1", "basedn", "val1");
@@ -162,9 +161,9 @@ public class AdServerTest {
     thrown.expect(RuntimeException.class);
     MockLdapContext ldapContext = new MockLdapContext() {
       @Override
-        public Attributes getAttributes(String name) throws NamingException {
+      public Attributes getAttributes(String name) throws NamingException {
         throw new NamingException("Can't connect");
-      };
+      }
     };
     addStandardKeysAndResults(ldapContext);
     ldapContext.addSearchResult("dn=empty", "attr1", "basedn", "val1");
@@ -196,6 +195,29 @@ public class AdServerTest {
   @Test
   public void testSearchReturnsNoUsersWhenMissingGUID() throws Exception {
     MockLdapContext ldapContext = new MockLdapContext();
+    addStandardKeysAndResults(ldapContext);
+    // populate additional attributes with values we can test
+    final String filter = "ou=Users";
+    final String userDn = "DN_for_default_naming_context";
+    ldapContext.addSearchResult(filter, "cn", userDn, "user1")
+               .addSearchResult(filter, "primaryGroupId", userDn, "users");
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    Set<AdEntity> resultSet = adServer.search(filter, false,
+        new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
+    assertEquals(0, resultSet.size());
+  }
+
+  @Test
+  public void testSetControlsThrowsException() throws Exception {
+    MockLdapContext ldapContext = new MockLdapContext() {
+      @Override
+      public void setRequestControls(Control[] requestControls)
+          throws NamingException {
+        controls = requestControls;
+        throw new NamingException("testing exception path");
+      }
+    };
     addStandardKeysAndResults(ldapContext);
     // populate additional attributes with values we can test
     final String filter = "ou=Users";
@@ -385,8 +407,8 @@ public class AdServerTest {
     int len = s.length();
     byte[] data = new byte[len / 2];
     for (int i = 0; i < len; i += 2) {
-        data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                             + Character.digit(s.charAt(i+1), 16));
+      data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                           + Character.digit(s.charAt(i+1), 16));
     }
     return data;
   }

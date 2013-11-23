@@ -25,16 +25,14 @@ import javax.naming.ldap.Control;
 import javax.naming.ldap.InitialLdapContext;
 
 /**
- * Mock of {@link Config}.
+ * Mock of {@link LdapContext}.
  */
 public class MockLdapContext extends InitialLdapContext {
   private BasicAttributes attributes = new BasicAttributes();
   private Hashtable<String, Object> searchResults
       = new Hashtable<String, Object>();
-  private Control[] controls = new Control[0];
-
-  // A hack to throw exactly 2 exceptions on calls to setRequestControls()
-  static int numberOfTimesSetRequestControlsWasCalled = 0;
+  @VisibleForTesting
+  Control[] controls = new Control[0];
 
   public MockLdapContext() throws NamingException {
   }
@@ -122,17 +120,11 @@ public class MockLdapContext extends InitialLdapContext {
     return controls;
   };
 
-  /** Sets the controls (which this class does nothing with)
-   *
-   * <p>throws Exceptions exactly once, to test the Exception processing code.
-   */
+  /** Sets the controls (which this class does nothing with) */
   @Override
   public void setRequestControls(Control[] requestControls)
       throws NamingException {
     controls = requestControls;
-    if (++numberOfTimesSetRequestControlsWasCalled == 2) {
-      throw new NamingException("calling setRequestControls for second time");
-    }
   };
 
   @VisibleForTesting
