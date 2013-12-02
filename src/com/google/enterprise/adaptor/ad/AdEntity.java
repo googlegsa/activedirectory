@@ -1,10 +1,9 @@
 package com.google.enterprise.adaptor.ad;
 
-import java.util.logging.Logger;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
@@ -12,6 +11,7 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchResult;
 
+/** Representation of a single user or group from Active Directory. */
 public class AdEntity {
   private static final Logger log =
       Logger.getLogger(AdEntity.class.getName());
@@ -26,6 +26,8 @@ public class AdEntity {
   private long uSNChanged;
   private boolean wellKnown;
   private boolean allMembershipsRetrieved;
+  private final Pattern attrMemberPattern =
+      Pattern.compile("member;range=[0-9]+-.*", Pattern.CASE_INSENSITIVE);
 
   private Object getAttribute(Attributes attributes, String name)
       throws NamingException {
@@ -39,7 +41,7 @@ public class AdEntity {
 
   private Attribute getMemberAttr(Attributes attrs) throws NamingException {
     allMembershipsRetrieved = true;
-    Attribute member = attrs.get(AdConstants.ATTR_MEMBER);
+    Attribute member = attrs.get("member");
     if (member != null && member.size() != 0) {
       return member;
     }
@@ -47,7 +49,7 @@ public class AdEntity {
     NamingEnumeration<String> ids = attrs.getIDs();
     while (ids.hasMore()) {
       String id = ids.next();
-      if (AdConstants.ATTR_MEMBER_PATTERN.matcher(id).matches()) {
+      if (attrMemberPattern.matcher(id).matches()) {
         allMembershipsRetrieved = id.endsWith("*");
         return attrs.get(id);
       }
@@ -66,18 +68,15 @@ public class AdEntity {
     dn = searchResult.getNameInNamespace();
     wellKnown = false;
     Attributes attrs = searchResult.getAttributes();
-    sAMAccountName =
-        (String) getAttribute(attrs, AdConstants.ATTR_SAMACCOUNTNAME);
-    objectGUID =
-        getTextGuid((byte[]) getAttribute(attrs, AdConstants.ATTR_OBJECTGUID));
-    sid = getTextSid((byte[]) getAttribute(attrs, AdConstants.ATTR_OBJECTSID));
-    String s = (String) getAttribute(attrs, AdConstants.ATTR_USNCHANGED);
+    sAMAccountName = (String) getAttribute(attrs, "sAMAccountName");
+    objectGUID = getTextGuid((byte[]) getAttribute(attrs, "objectGUID;binary"));
+    sid = getTextSid((byte[]) getAttribute(attrs, "objectSid;binary"));
+    String s = (String) getAttribute(attrs, "uSNChanged");
     if (s != null) {
       uSNChanged = Long.parseLong(s);
     }
-    primaryGroupId =
-        (String) getAttribute(attrs, AdConstants.ATTR_PRIMARYGROUPID);
-    userPrincipalName = (String) getAttribute(attrs, AdConstants.ATTR_UPN);
+    primaryGroupId = (String) getAttribute(attrs, "primaryGroupId");
+    userPrincipalName = (String) getAttribute(attrs, "userPrincipalName");
 
     members = new HashSet<String>();
     if (isGroup()) {
@@ -106,19 +105,19 @@ public class AdEntity {
   }
 
   /**
-   * Appends additional memberships from search result 
+   * Appends additional memberships from search result
    * @param searchResult which contains additional groups
    * @return number of groups found
    * @throws NamingException
    */
   public int appendGroups(SearchResult searchResult)
       throws NamingException {
-    Attribute member = getMemberAttr(searchResult.getAttributes()); 
+    Attribute member = getMemberAttr(searchResult.getAttributes());
     if (member != null) {
       for (int i = 0; i < member.size(); ++i) {
         members.add(member.get(i).toString());
       }
-      return member.size(); 
+      return member.size();
     } else {
       return 0;
     }
@@ -133,17 +132,14 @@ public class AdEntity {
   public String getCommonName() {
     // LDAP queries return escaped commas to avoid ambiguity, find first not
     // escaped comma
-    int comma = dn.indexOf(AdConstants.COMMA);
-    while (comma > 0 && comma < dn.length()
-        && (dn.charAt(comma - 1) == AdConstants.BACKSLASH_CHAR)) {
-      comma = dn.indexOf(AdConstants.COMMA, comma + 1);
+    int comma = dn.indexOf(",");
+    while (comma > 0 && comma < dn.length() - 1 &&
+        (dn.charAt(comma - 1) == '\\')) {
+      comma = dn.indexOf(",", comma + 1);
     }
     String tmpGroupName = dn.substring(0, comma > 0 ? comma : dn.length());
-    tmpGroupName =
-        tmpGroupName.substring(
-        tmpGroupName.indexOf(AdConstants.EQUALS_CHAR) + 1);
-    tmpGroupName =
-        tmpGroupName.replace(AdConstants.BACKSLASH, AdConstants.EMPTY);
+    tmpGroupName = tmpGroupName.substring(tmpGroupName.indexOf('=') + 1);
+    tmpGroupName = tmpGroupName.replace("\\", "");
     return tmpGroupName;
   }
 
@@ -158,7 +154,7 @@ public class AdEntity {
     if (objectSid == null) {
       return null;
     }
-    StringBuilder strSID = new StringBuilder(AdConstants.SID_START);
+    StringBuilder strSID = new StringBuilder("S-");
     long version = objectSid[0];
     strSID.append(Long.toString(version));
     long authority = objectSid[4];
@@ -167,7 +163,7 @@ public class AdEntity {
       authority <<= 8;
       authority += objectSid[4 + i] & 0xFF;
     }
-    strSID.append(AdConstants.HYPHEN_CHAR).append(Long.toString(authority));
+    strSID.append('-').append(Long.toString(authority));
     long count = objectSid[2];
     count <<= 8;
     count += objectSid[1] & 0xFF;
@@ -179,31 +175,9 @@ public class AdEntity {
         rid <<= 8;
         rid += objectSid[11 - k + (j * 4)] & 0xFF;
       }
-      strSID.append(AdConstants.HYPHEN_CHAR).append(Long.toString(rid));
+      strSID.append('-').append(Long.toString(rid));
     }
     return strSID.toString();
-  }
-
-  /**
-   * Generate properties to be used for parameter binding in JDBC
-   * @return map of names and properties of current object
-   */
-  public Map<String, Object> getSqlParams() {
-    HashMap<String, Object> map = new HashMap<String, Object>();
-    map.put(AdConstants.DB_DN, dn);
-    map.put(AdConstants.DB_SAMACCOUNTNAME, sAMAccountName.toLowerCase());
-    map.put(AdConstants.DB_UPN, userPrincipalName);
-    map.put(AdConstants.DB_PRIMARYGROUPID, primaryGroupId);
-    if (sid != null) {
-      map.put(AdConstants.DB_DOMAINSID,
-          sid.substring(0, sid.lastIndexOf(AdConstants.HYPHEN_CHAR)));
-      map.put(AdConstants.DB_RID,
-          sid.substring(sid.lastIndexOf(AdConstants.HYPHEN_CHAR) + 1));
-    }
-    map.put(AdConstants.DB_OBJECTGUID, objectGUID);
-    map.put(AdConstants.DB_USNCHANGED, uSNChanged);
-    map.put(AdConstants.DB_WELLKNOWN, wellKnown ? 1 : 0);
-    return map;
   }
 
   /**
@@ -214,7 +188,7 @@ public class AdEntity {
    * @return string containing the GUID
    */
   public static String getTextGuid(byte[] binaryGuid) {
-    StringBuilder sb = new StringBuilder(AdConstants.GUID_START);
+    StringBuilder sb = new StringBuilder("0x");
     for (byte b : binaryGuid) {
       sb.append(Integer.toHexString(b & 0xFF));
     }
@@ -253,7 +227,7 @@ public class AdEntity {
   public boolean isGroup() {
     return primaryGroupId == null;
   }
-  
+
   public boolean isWellKnown() {
     return wellKnown;
   }
@@ -270,7 +244,7 @@ public class AdEntity {
   }
 
   public String getPrimaryGroupSid() {
-    int index = sid.lastIndexOf(AdConstants.HYPHEN_CHAR) + 1;
+    int index = sid.lastIndexOf('-') + 1;
     return sid.substring(0,  index) + primaryGroupId;
   }
 
