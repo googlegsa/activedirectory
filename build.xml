@@ -241,6 +241,9 @@ lib/plexi submodule or add the the command line argument
     <taskdef classpathref="cobertura.classpath" resource="tasks.properties"/>
     <cobertura-instrument datafile="${build-instrument.dir}/cobertura.ser"
       todir="${build-instrument.dir}">
+      <auxClassPath>
+        <path refid="adaptor.build.classpath" />
+      </auxClassPath>
       <fileset dir="${build-src.dir}"/>
     </cobertura-instrument>
   </target>
