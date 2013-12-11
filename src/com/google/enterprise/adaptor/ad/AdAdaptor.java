@@ -311,7 +311,13 @@ public class AdAdaptor extends AbstractAdaptor {
         }
 
         String groupName = getPrincipalName(entity);
-        GroupPrincipal group = new GroupPrincipal(groupName, namespace);
+        GroupPrincipal group;
+        try {
+          group = new GroupPrincipal(groupName, namespace);
+        } catch (IllegalArgumentException iae) {
+          log.log(Level.WARNING, "Skipping over badly-named group", iae);
+          continue;
+        }
         List<Principal> def = new ArrayList<Principal>();
 
         if (!feedBuiltinGroups
@@ -332,8 +338,23 @@ public class AdAdaptor extends AbstractAdaptor {
           String memberName = getPrincipalName(member);
           if (member.isGroup()) {
             p = new GroupPrincipal(memberName, namespace);
+            try {
+              p = new GroupPrincipal(memberName, namespace);
+            } catch (IllegalArgumentException iae) {
+              String warning = "Skipping badly-named group \"" + memberName
+                  + "\" from group \"" + groupName + "\".";
+              log.log(Level.WARNING, warning, iae);
+              continue;
+            }
           } else {
-            p = new UserPrincipal(memberName, namespace);
+            try {
+              p = new UserPrincipal(memberName, namespace);
+            } catch (IllegalArgumentException iae) {
+              String warning = "Skipping badly-named user \"" + memberName
+                  + "\" from group \"" + groupName + "\".";
+              log.log(Level.WARNING, warning, iae);
+              continue;
+            }
           }
           def.add(p);
         }
