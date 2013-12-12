@@ -41,7 +41,7 @@ public class AdAdaptor extends AbstractAdaptor {
 
   private String namespace;
   private String defaultUser;  // used if an AD doesn't override
-  private String defaultPassword;
+  private String defaultPassword;  // likewise
   private List<AdServer> servers = new ArrayList<AdServer>();
   private Map<String, String> localizedStrings;
   private boolean feedBuiltinGroups;
@@ -50,8 +50,8 @@ public class AdAdaptor extends AbstractAdaptor {
   public void initConfig(Config config) {
     config.addKey("ad.servers", null);
     config.addKey("adaptor.namespace", "Default");
-    config.addKey("ad.defaultUser", null);
-    config.addKey("ad.defaultPassword", null);
+    config.addKey("ad.defaultUser", "");
+    config.addKey("ad.defaultPassword", "");
     config.addKey("ad.localized.Everyone", "Everyone");
     config.addKey("ad.localized.NTAuthority", "NT Authority");
     config.addKey("ad.localized.Interactive", "Interactive");
@@ -88,19 +88,19 @@ public class AdAdaptor extends AbstractAdaptor {
         }
       }
       String principal = singleServerConfig.get("user");
-      String passwd = singleServerConfig.get("password");
-      if (null == principal || principal.isEmpty()) {
+      if (null == principal) {
         principal = defaultUser;
-        if (null == passwd || passwd.isEmpty()) {
-          passwd = defaultPassword;
-        } else {
-          String err = "password without user for " + host;
-          throw new IllegalStateException(err);
-        }
       }
-      if (null == passwd || passwd.isEmpty()) {
-        String err = "no password for " + host;
-        throw new IllegalStateException(err);
+      if (principal.isEmpty()) {
+        throw new IllegalStateException("user not specified for host " + host);
+      }
+      String passwd = singleServerConfig.get("password");
+      if (null == passwd) {
+        passwd = defaultPassword;
+      }
+      if (passwd.isEmpty()) {
+        throw new IllegalStateException("password not specified for host "
+            + host);
       }
       AdServer adServer = new AdServer(method, host, port, principal, passwd);
       servers.add(adServer);
