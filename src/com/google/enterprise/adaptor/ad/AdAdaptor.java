@@ -102,13 +102,23 @@ public class AdAdaptor extends AbstractAdaptor {
         throw new IllegalStateException("password not specified for host "
             + host);
       }
-      AdServer adServer = new AdServer(method, host, port, principal, passwd);
+      AdServer adServer = newAdServer(method, host, port, principal, passwd);
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
       dup.put("password", "XXXXXX");  // hide password
       log.log(Level.CONFIG, "AD server spec: {0}", dup);
     }
     localizedStrings = context.getConfig().getValuesWithPrefix("ad.localized.");
+  }
+
+  /**
+    * This method exists specifically to be overwritten in the test class, in
+    * order to inject a version of AdServer that uses mocks.
+    */
+  @VisibleForTesting
+  AdServer newAdServer(Method method, String host, int port,
+      String principal, String passwd) {
+    return new AdServer(method, host, port, principal, passwd);
   }
 
   /** This adaptor does not serve documents. */
@@ -161,17 +171,9 @@ public class AdAdaptor extends AbstractAdaptor {
     Map<String, AdEntity> byDn = new HashMap<String, AdEntity>();
     Map<AdEntity, String> domain = new HashMap<AdEntity, String>();
 
-    final AdEntity everyone = new AdEntity("S-1-1-0",
-        MessageFormat.format("CN={0}",
-        localizedStrings.get("Everyone")));
-    final AdEntity interactive = new AdEntity("S-1-5-4",
-        MessageFormat.format("CN={0},DC={1}",
-        localizedStrings.get("Interactive"),
-        localizedStrings.get("NTAuthority")));
-    final AdEntity authenticatedUsers = new AdEntity("S-1-5-11" ,
-        MessageFormat.format("CN={0},DC={1}",
-        localizedStrings.get("AuthenticatedUsers"),
-        localizedStrings.get("NTAuthority")));
+    final AdEntity everyone;
+    final AdEntity interactive;
+    final AdEntity authenticatedUsers;
     final Map<AdEntity, Set<String>> wellKnownMembership;
 
     public GroupCatalog(Map<String, String> localizedStrings, String namespace,
@@ -179,6 +181,17 @@ public class AdAdaptor extends AbstractAdaptor {
       this.localizedStrings = localizedStrings;
       this.namespace = namespace;
       this.feedBuiltinGroups = feedBuiltinGroups;
+      everyone = new AdEntity("S-1-1-0",
+          MessageFormat.format("CN={0}",
+          localizedStrings.get("Everyone")));
+      interactive = new AdEntity("S-1-5-4",
+          MessageFormat.format("CN={0},DC={1}",
+          localizedStrings.get("Interactive"),
+          localizedStrings.get("NTAuthority")));
+      authenticatedUsers = new AdEntity("S-1-5-11" ,
+          MessageFormat.format("CN={0},DC={1}",
+          localizedStrings.get("AuthenticatedUsers"),
+          localizedStrings.get("NTAuthority")));
       wellKnownMembership = new HashMap<AdEntity, Set<String>>();
       wellKnownMembership.put(everyone, new TreeSet<String>());
       wellKnownMembership.put(interactive, new TreeSet<String>());
@@ -208,17 +221,32 @@ public class AdAdaptor extends AbstractAdaptor {
       domain.put(authenticatedUsers, localizedStrings.get("NTAuthority"));
     }
 
+    @VisibleForTesting
+    GroupCatalog(Map<String, String> localizedStrings, String namespace,
+        boolean feedBuiltinGroups, Set<AdEntity> entities,
+        Map<AdEntity, Set<String>> members,
+        Map<String, AdEntity> bySid,
+        Map<String, AdEntity> byDn,
+        Map<AdEntity, String> domain) {
+      this(localizedStrings, namespace, feedBuiltinGroups);
+      this.entities.clear();
+      this.entities.addAll(entities);
+      this.members.putAll(members);
+      this.bySid.putAll(bySid);
+      this.byDn.putAll(byDn);
+      this.domain.putAll(domain);
+    }
+
     void readFrom(AdServer server) throws InterruptedNamingException {
-      entities = server.search(AdConstants.LDAP_QUERY, /*deleted=*/ false,
-          new String[] {
-              AdConstants.ATTR_USNCHANGED,
-              AdConstants.ATTR_SAMACCOUNTNAME,
-              AdConstants.ATTR_OBJECTSID,
-              AdConstants.ATTR_OBJECTGUID,
-              AdConstants.ATTR_UPN,
-              AdConstants.ATTR_PRIMARYGROUPID,
-              AdConstants.ATTR_MEMBER}
-      );
+      // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
+      // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
+      entities = server.search("(|(&(objectClass=group)"
+          + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
+          + "(&(objectClass=user)(objectCategory=person)))",
+          /*deleted=*/ false,
+          new String[] { "uSNChanged", "sAMAccountName", "objectGUID;binary",
+              "objectSid;binary", "userPrincipalName", "primaryGroupId",
+              "member" });
       log.log(Level.FINE, "received {0} entities from server", entities.size());
       for (AdEntity e : entities) {
         bySid.put(e.getSid(), e);
@@ -337,7 +365,6 @@ public class AdAdaptor extends AbstractAdaptor {
           Principal p;
           String memberName = getPrincipalName(member);
           if (member.isGroup()) {
-            p = new GroupPrincipal(memberName, namespace);
             try {
               p = new GroupPrincipal(memberName, namespace);
             } catch (IllegalArgumentException iae) {
@@ -414,6 +441,26 @@ public class AdAdaptor extends AbstractAdaptor {
       byDn.clear();
       domain.clear();
       wellKnownMembership.clear();
+    }
+
+    @Override
+    public int hashCode() {
+      return Arrays.hashCode(
+          new Object[] {entities, members, bySid, byDn, domain});
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (!(o instanceof GroupCatalog)) {
+        return false;
+      }
+      GroupCatalog gc = (GroupCatalog) o;
+      return entities.equals(gc.entities)
+          && members.equals(gc.members)
+          && bySid.equals(gc.bySid)
+          && byDn.equals(gc.byDn)
+          && domain.equals(gc.domain);
+          // TODO(myk): If needed, add equality check for wellKnownMembership
     }
   }
 }

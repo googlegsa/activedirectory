@@ -1,5 +1,6 @@
 package com.google.enterprise.adaptor.ad;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.logging.Logger;
@@ -90,7 +91,7 @@ public class AdEntity {
   }
 
   /**
-   * Constructor to be used only for creating well known identities
+   * Constructor to be used only for creating well known group identities
    * @param sid identifier of the object, this will be used as objectGUID as
    *        well to ensure uniqueness in the database
    * @param dn distinguished name of the object
@@ -101,6 +102,24 @@ public class AdEntity {
     members = new HashSet<String>();
     objectGUID = sid;
     sAMAccountName = getCommonName();
+    wellKnown = true;
+  }
+
+  /**
+   * Constructor to be used only for creating well known user identities
+   * @param sid identifier of the object, this will be used as objectGUID as
+   *        well to ensure uniqueness in the database
+   * @param dn distinguished name of the object
+   * @param primaryGroupId user's primary group -- non-null implies user
+   */
+  public AdEntity(String sid, String dn, String primaryGroupId,
+      String sAMAccountName) {
+    this.sid = sid;
+    this.dn = dn;
+    this.primaryGroupId = primaryGroupId;
+    this.sAMAccountName = sAMAccountName;
+    members = new HashSet<String>();
+    objectGUID = sid;
     wellKnown = true;
   }
 
@@ -203,7 +222,18 @@ public class AdEntity {
 
   @Override
   public String toString() {
-    return dn;
+    SBS result = new SBS();
+    result.append("dn", dn);
+    result.append("members", members);
+    result.append("sAMAccountName", sAMAccountName);
+    result.append("userPrincipalName", userPrincipalName);
+    result.append("primaryGroupId", primaryGroupId);
+    result.append("sid", sid);
+    result.append("objectGUID", objectGUID);
+    result.append("sid", sid);
+    result.append("uSNChanged", uSNChanged);
+    result.append("allMembershipsRetrieved", allMembershipsRetrieved);
+    return result.toString();
   }
 
   /**
@@ -260,5 +290,55 @@ public class AdEntity {
       return null;
     }
     return sid;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (!(o instanceof AdEntity)) {
+      return false;
+    }
+    AdEntity other = (AdEntity) o;
+    return dn.equals(other.dn)
+        && sAMAccountName.equals(other.sAMAccountName)
+        && ((userPrincipalName == null) ? (other.userPrincipalName == null) :
+            userPrincipalName.equals(other.userPrincipalName))
+        && ((primaryGroupId == null) ? (other.primaryGroupId == null) :
+            primaryGroupId.equals(other.primaryGroupId))
+        && ((sid == null) ? (other.sid == null) : sid.equals(other.sid))
+        && members.equals(other.members)
+        && uSNChanged == other.uSNChanged;
+        // note: 3 fields (objectGUID, wellKnown, and allMembershipsRetrieved)
+        // are intentionally skipped - we'd need a setter method to make the
+        // "golden" values correct.
+  }
+
+  @Override
+  public int hashCode() {
+    // same 3 fields as above are excluded here.
+    return Arrays.hashCode(new Object[] {dn, sAMAccountName, userPrincipalName,
+        primaryGroupId, sid, members, uSNChanged});
+  }
+
+  /**
+   * Used by the toString() method, to avoid repeated code
+   */
+  private static class SBS {
+    private StringBuilder wrap = new StringBuilder();
+    SBS append(String name, Object value) {
+      wrap.append(name);
+      if (null == value) {
+        wrap.append(" is null,");
+      } else {
+        wrap.append(" = " + value + ",");
+      }
+      return this;
+    }
+    public String toString() {
+      // eliminate trailing comma
+      if (wrap.length() > 0) {
+        wrap.setLength(wrap.length() - 1);
+      }
+      return wrap.toString();
+    }
   }
 }
