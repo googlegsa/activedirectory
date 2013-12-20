@@ -80,9 +80,16 @@ public class AdServerTest {
   }
 
   @Test
-  public void testPublicConstructor() {
+  public void testPublicSSLConstructor() {
     thrown.expect(AssertionError.class);
     AdServer adServer = new AdServer(Method.SSL, "localhost", 389, " ", " ");
+  }
+
+  @Test
+  public void testPublicStandardConstructor() {
+    thrown.expect(AssertionError.class);
+    AdServer adServer =
+        new AdServer(Method.STANDARD, "localhost", 389, " ", " ");
   }
 
   @Test
@@ -408,7 +415,7 @@ public class AdServerTest {
     byte[] data = new byte[len / 2];
     for (int i = 0; i < len; i += 2) {
       data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
-                           + Character.digit(s.charAt(i+1), 16));
+                           + Character.digit(s.charAt(i + 1), 16));
     }
     return data;
   }
