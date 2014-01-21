@@ -160,11 +160,75 @@ public class AdAdaptorTest {
   }
 
   @Test
+  public void testGroupCatalogReadFromReturnsDisabledGroup() throws Exception {
+    Map<String, String> strings = defaultLocalizedStringMap();
+
+    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
+      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    // add a disabled group
+    String filter = "(|(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
+        + "(&(objectClass=user)(objectCategory=person)))";
+    String searchDn = "DN_for_default_naming_context";
+    List<String> members = Arrays.asList("dn_for_user_1", "dn_for_user_2");
+    ldapContext.addSearchResult(filter, "cn", searchDn, "group_name")
+               .addSearchResult(filter, "objectSid;binary", searchDn,
+                   hexStringToByteArray("010100000000000000000000")) // S-1-0-0
+               .addSearchResult(filter, "objectGUID;binary", searchDn,
+                   hexStringToByteArray("000102030405060708090a0b0e"))
+               .addSearchResult(filter, "member", searchDn, members)
+               .addSearchResult(filter, "userAccountControl", searchDn, "514")
+               .addSearchResult(filter, "sAMAccountName", searchDn,
+                   "name under");
+
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+
+    groupCatalog.readFrom(adServer);
+
+    AdEntity[] groupEntity = groupCatalog.entities.toArray(new AdEntity[0]);
+    final AdEntity goldenEntity = groupEntity[0];
+    final Map<AdEntity, Set<String>> goldenMembers =
+        new HashMap<AdEntity, Set<String>>();
+    goldenMembers.put(goldenEntity, goldenEntity.getMembers());
+    final Map<String, AdEntity> goldenSid =
+        new HashMap<String, AdEntity>();
+    goldenSid.put(goldenEntity.getSid(), goldenEntity);
+    AdEntity everyone = groupCatalog.bySid.get("S-1-1-0");
+    AdEntity authUsers = groupCatalog.bySid.get("S-1-5-11");
+    AdEntity interactive = groupCatalog.bySid.get("S-1-5-4");
+    goldenSid.put("S-1-1-0", everyone);
+    goldenSid.put("S-1-5-11", authUsers);
+    goldenSid.put("S-1-5-4", interactive);
+    final Map<String, AdEntity> goldenDn =
+        new HashMap<String, AdEntity>();
+    goldenDn.put(goldenEntity.getDn(), goldenEntity);
+    goldenDn.put(everyone.getDn(), everyone);
+    goldenDn.put(authUsers.getDn(), authUsers);
+    goldenDn.put(interactive.getDn(), interactive);
+    final Map<AdEntity, String> goldenDomain = new HashMap<AdEntity, String>();
+    goldenDomain.put(goldenEntity, "GSA-CONNECTORS");
+    goldenDomain.put(interactive, "NT Authority");
+    goldenDomain.put(authUsers, "NT Authority");
+
+    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
+      strings, "example.com", /*feedBuiltinGroups=*/ true,
+      /*entities*/ Sets.newHashSet(goldenEntity),
+      /*members*/ goldenMembers,
+      /*bySid*/ goldenSid,
+      /*byDn*/ goldenDn,
+      /*domain*/ goldenDomain);
+
+    assertTrue(golden.equals(groupCatalog));
+  }
+
+  @Test
   public void testGroupCatalogReadFromReturnsUser() throws Exception {
     AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
         defaultLocalizedStringMap(), "example", /*feedBuiltinGroups=*/ false);
     MockLdapContext ldapContext = defaultMockLdapContext();
-    // add a group
+    // add a user
     String filter = "(|(&(objectClass=group)"
         + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
         + "(&(objectClass=user)(objectCategory=person)))";
@@ -327,14 +391,14 @@ public class AdAdaptorTest {
     AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
       strings, "example.com", /*feedBuiltinGroups=*/ false);
 
-    MockLdapContext ldapContext = mockLdapContextForMakeDefs();
+    MockLdapContext ldapContext = mockLdapContextForMakeDefs(false);
 
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
     groupCatalog.readFrom(adServer);
 
-    tweakGroupCatalogForMakeDefs(groupCatalog, adServer);
+    tweakGroupCatalogForMakeDefs(groupCatalog, adServer, false);
 
     final Map<GroupPrincipal, List<Principal>> golden =
         new HashMap<GroupPrincipal, List<Principal>>();
@@ -343,6 +407,33 @@ public class AdAdaptorTest {
           Arrays.asList(
               new UserPrincipal("sam2", "example.com"),
               new GroupPrincipal("known_group", "example.com")));
+      golden.put(new GroupPrincipal("known_group", "example.com"),
+          Collections.<Principal>emptyList());
+    }
+    assertEquals(golden, groupCatalog.makeDefs());
+  }
+
+  @Test
+  public void testGroupCatalogMakeDefsWithDisabledGroup() throws Exception {
+    Map<String, String> strings = defaultLocalizedStringMap();
+
+    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
+      strings, "example.com", /*feedBuiltinGroups=*/ false);
+
+    MockLdapContext ldapContext = mockLdapContextForMakeDefs(true);
+
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+
+    groupCatalog.readFrom(adServer);
+
+    tweakGroupCatalogForMakeDefs(groupCatalog, adServer, true);
+
+    final Map<GroupPrincipal, List<Principal>> golden =
+        new HashMap<GroupPrincipal, List<Principal>>();
+    {
+      golden.put(new GroupPrincipal("sam@GSA-CONNECTORS", "example.com"),
+          Collections.<Principal>emptyList());
       golden.put(new GroupPrincipal("known_group", "example.com"),
           Collections.<Principal>emptyList());
     }
@@ -359,7 +450,7 @@ public class AdAdaptorTest {
     Level oldLevel = log.getLevel();
     log.setLevel(Level.FINER);
 
-    MockLdapContext ldapContext = mockLdapContextForMakeDefs();
+    MockLdapContext ldapContext = mockLdapContextForMakeDefs(false);
     String searchDn = "DN_for_default_naming_context";
     String filter = "(objectCategory=person)";
     ldapContext.addSearchResult(filter, "objectSid;binary", searchDn,
@@ -375,7 +466,7 @@ public class AdAdaptorTest {
 
     groupCatalog.readFrom(adServer);
 
-    tweakGroupCatalogForMakeDefs(groupCatalog, adServer);
+    tweakGroupCatalogForMakeDefs(groupCatalog, adServer, false);
     // now replace the parent group with a well-known one
     AdEntity replacementGroup = new AdEntity("S-1-0-0", "dn=new_parent");
     AdEntity groupWithNoName = new AdEntity("", "dn=");
@@ -559,7 +650,7 @@ public class AdAdaptorTest {
           String principal, String passwd) {
         MockLdapContext ldapContext = null;
         try {
-          ldapContext = mockLdapContextForMakeDefs();
+          ldapContext = mockLdapContextForMakeDefs(false);
         } catch (Exception e) {
           fail("Could not create LdapContext:" + e);
         }
@@ -638,7 +729,8 @@ public class AdAdaptorTest {
     return ldapContext;
   }
 
-  private MockLdapContext mockLdapContextForMakeDefs() throws Exception {
+  private MockLdapContext mockLdapContextForMakeDefs(boolean disableSamGroup)
+      throws Exception {
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a group
     String filter = "(|(&(objectClass=group)"
@@ -655,6 +747,8 @@ public class AdAdaptorTest {
                .addSearchResult(filter, "objectGUID;binary", searchDn,
                    hexStringToByteArray("000102030405060708090a0b0e"))
                .addSearchResult(filter, "member", searchDn, members)
+               .addSearchResult(filter, "userAccountControl", searchDn,
+                   (disableSamGroup ? "514" : "512"))
                .addSearchResult(filter, "sAMAccountName", searchDn, "sam");
     // and a user (under another filter)
     String filter2 = "(&(objectClass=user)(objectCategory=person))";
@@ -671,7 +765,7 @@ public class AdAdaptorTest {
   }
 
   private void tweakGroupCatalogForMakeDefs(AdAdaptor.GroupCatalog groupCatalog,
-      AdServer adServer) throws Exception {
+      AdServer adServer, boolean disableSamGroup) throws Exception {
     // add two additional entities to test all branches of our method.
     assertEquals(1, groupCatalog.entities.size());
     // first -- a user
@@ -836,7 +930,7 @@ public class AdAdaptorTest {
         String principal, String passwd) {
       MockLdapContext ldapContext = null;
       try {
-        ldapContext = mockLdapContextForMakeDefs();
+        ldapContext = mockLdapContextForMakeDefs(false);
       } catch (Exception e) {
         fail("Could not create LdapContext:" + e);
       }

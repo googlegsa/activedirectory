@@ -33,6 +33,7 @@ public class AdEntityTest {
         AdServerTest.hexStringToByteArray("010100000000000000000000"));
     attrs.put("uSNChanged", "12345678");
     attrs.put("primaryGroupId", "users");
+    attrs.put("userAccountControl", "512");  // standard, enabled, user
 
     SearchResult sr = new SearchResult("SR name", attrs, attrs);
     sr.setNameInNamespace("cn=user,ou=Users,dc=example,dc=com");
@@ -43,18 +44,62 @@ public class AdEntityTest {
     assertFalse(adEntity.isWellKnown());
     assertEquals(0, adEntity.getMembers().size());
     assertEquals("S-1-0-users", adEntity.getPrimaryGroupSid());
+    assertFalse(adEntity.isDisabled());
   }
 
   @Test
   public void testWellKnownConstructor() throws Exception {
     AdEntity adEntity = new AdEntity("S-1-1-1",
         "dn=escaped\\,cn=users,ou=Users,dc=example,dc=com");
+    adEntity.setUserAccountControl(514);  // disabled user
     assertEquals("escaped,cn=users", adEntity.getCommonName());
     assertEquals("S-1-1-1", adEntity.getSid());
     assertEquals("dn=escaped\\,cn=users,ou=Users,dc=example,dc=com",
         adEntity.getDn());
     assertTrue(adEntity.isWellKnown());
     assertEquals(0, adEntity.getMembers().size());
+    assertTrue(adEntity.isDisabled());
+  }
+
+  @Test
+  public void testEquals() throws Exception {
+    AdEntity one = one = new AdEntity("foo", "bar");
+    String nonAdEntity = new String("bogus");
+    assertFalse(one.equals(nonAdEntity));
+    AdEntity two = new AdEntity("foo", "baz");
+    assertFalse(one.equals(nonAdEntity));
+    two = new AdEntity("baz", "bar");
+    assertFalse(one.equals(nonAdEntity));
+
+    Attributes attrs = new BasicAttributes();
+    attrs.put("objectGUID;binary",
+        AdServerTest.hexStringToByteArray("000102030405060708090a0b0c"));
+    attrs.put("objectSid;binary", // S-1-0-0
+        AdServerTest.hexStringToByteArray("010100000000000000000000"));
+    attrs.put("uSNChanged", "12345678");
+    attrs.put("primaryGroupId", "users");
+    attrs.put("userPrincipalName", "user");
+    attrs.put("sAMAccountName", "sam");
+    attrs.put("userAccountControl", "512");  // standard, enabled, user
+
+    SearchResult sr = new SearchResult("SR name", attrs, attrs);
+    sr.setNameInNamespace("cn=user,ou=Users,dc=example,dc=com");
+    one = new AdEntity(sr);
+    attrs.put("primaryGroupId", "another group");
+    sr = new SearchResult("SR name", attrs, attrs);
+    sr.setNameInNamespace("cn=user,ou=Users,dc=example,dc=com");
+    two = new AdEntity(sr);
+    assertFalse(one.equals(two));
+    // TODO(myk): additional equality tests for other fields, if deemed useful
+
+    // test userAccountControl field for equality
+    one = new AdEntity("dn1", "dn=user,ou=Users,dc=example,dc=com");
+    two = new AdEntity("dn1", "dn=user,ou=Users,dc=example,dc=com");
+    assertEquals(one, two);
+    two.setUserAccountControl(514);  // disabled user
+    assertFalse(one.equals(two));
+    two.setUserAccountControl(0);
+    assertEquals(one, two);
   }
 
   @Test

@@ -1,5 +1,7 @@
 package com.google.enterprise.adaptor.ad;
 
+import com.google.common.annotations.VisibleForTesting;
+
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
@@ -27,6 +29,7 @@ public class AdEntity {
   private long uSNChanged;
   private boolean wellKnown;
   private boolean allMembershipsRetrieved;
+  private long userAccountControl;  // determines whether user/group is disabled
   private final Pattern attrMemberPattern =
       Pattern.compile("member;range=[0-9]+-.*", Pattern.CASE_INSENSITIVE);
 
@@ -78,6 +81,12 @@ public class AdEntity {
     }
     primaryGroupId = (String) getAttribute(attrs, "primaryGroupId");
     userPrincipalName = (String) getAttribute(attrs, "userPrincipalName");
+    s = (String) getAttribute(attrs, "userAccountControl");
+    if (s == null) {
+      userAccountControl = 0; // not disabled - any value where value & 2 == 0
+    } else {
+      userAccountControl = Long.parseLong(s);
+    }
 
     members = new HashSet<String>();
     if (isGroup()) {
@@ -232,6 +241,7 @@ public class AdEntity {
     result.append("objectGUID", objectGUID);
     result.append("sid", sid);
     result.append("uSNChanged", uSNChanged);
+    result.append("userAccountControl", userAccountControl);
     result.append("allMembershipsRetrieved", allMembershipsRetrieved);
     return result.toString();
   }
@@ -259,6 +269,19 @@ public class AdEntity {
 
   public boolean isWellKnown() {
     return wellKnown;
+  }
+
+  /**
+  * @return if current entity is disabled
+  */
+  public boolean isDisabled() {
+    //TODO(myk): see if there's any reason to check ADS_UF_LOCKOUT [16]
+    return ((userAccountControl & 2) != 0);
+  }
+
+  @VisibleForTesting
+  void setUserAccountControl(long userAccountControl) {
+    this.userAccountControl = userAccountControl;
   }
 
   /**
@@ -299,14 +322,17 @@ public class AdEntity {
     }
     AdEntity other = (AdEntity) o;
     return dn.equals(other.dn)
-        && sAMAccountName.equals(other.sAMAccountName)
+        && ((sAMAccountName == null) ? (other.sAMAccountName == null) :
+            sAMAccountName.equals(other.sAMAccountName))
         && ((userPrincipalName == null) ? (other.userPrincipalName == null) :
             userPrincipalName.equals(other.userPrincipalName))
         && ((primaryGroupId == null) ? (other.primaryGroupId == null) :
             primaryGroupId.equals(other.primaryGroupId))
         && ((sid == null) ? (other.sid == null) : sid.equals(other.sid))
-        && members.equals(other.members)
-        && uSNChanged == other.uSNChanged;
+        && ((members == null) ? (other.members == null) :
+            members.equals(other.members))
+        && uSNChanged == other.uSNChanged
+        && userAccountControl == other.userAccountControl;
         // note: 3 fields (objectGUID, wellKnown, and allMembershipsRetrieved)
         // are intentionally skipped - we'd need a setter method to make the
         // "golden" values correct.
@@ -316,7 +342,7 @@ public class AdEntity {
   public int hashCode() {
     // same 3 fields as above are excluded here.
     return Arrays.hashCode(new Object[] {dn, sAMAccountName, userPrincipalName,
-        primaryGroupId, sid, members, uSNChanged});
+        primaryGroupId, sid, members, uSNChanged, userAccountControl});
   }
 
   /**

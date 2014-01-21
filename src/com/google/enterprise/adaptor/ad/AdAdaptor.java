@@ -246,7 +246,8 @@ public class AdAdaptor extends AbstractAdaptor {
           /*deleted=*/ false,
           new String[] { "uSNChanged", "sAMAccountName", "objectGUID;binary",
               "objectSid;binary", "userPrincipalName", "primaryGroupId",
-              "member" });
+              "member", "userAccountControl" });
+      // disabled groups handled later, in makeDefs()
       log.log(Level.FINE, "received {0} entities from server", entities.size());
       for (AdEntity e : entities) {
         bySid.put(e.getSid(), e);
@@ -355,6 +356,12 @@ public class AdAdaptor extends AbstractAdaptor {
           continue;
         }
 
+        if (entity.isDisabled()) {
+          log.log(Level.FINE, "Skipping {0} members from disabled group {1}",
+              new Object[]{entity.getMembers().size(), group});
+          groups.put(group, def);
+          continue;
+        }
         for (String memberDn : allMembers.get(entity)) {
           AdEntity member = byDn.get(memberDn);
           if (member == null) {
