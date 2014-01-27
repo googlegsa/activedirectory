@@ -270,12 +270,20 @@ public class AdAdaptor extends AbstractAdaptor {
 
     private void resolvePrimaryGroups() {
       int nadds = 0;
+      int missing_groups = 0;
       for (AdEntity e : entities) {
         if (e.isGroup()) {
           continue;
         }
         AdEntity user = e;
         AdEntity primaryGroup = bySid.get(user.getPrimaryGroupSid());
+        if (primaryGroup == null) {
+          missing_groups++;
+          log.log(Level.FINER,
+              "Group {0} -- primary group for user {1} -- not found",
+              new Object[]{user.getPrimaryGroupSid(), user});
+          continue;
+        }
         if (!members.containsKey(primaryGroup)) {
           members.put(primaryGroup, new TreeSet<String>());
         }
@@ -284,6 +292,9 @@ public class AdAdaptor extends AbstractAdaptor {
         nadds++;
       }
       log.log(Level.FINE, "# primary groups: {0}", members.keySet().size());
+      if (missing_groups > 0) {
+        log.log(Level.FINE, "# missing primary groups: {0}", missing_groups);
+      }
       log.log(Level.FINE, "# users added to all primary groups: {0}", nadds);
     }
 
