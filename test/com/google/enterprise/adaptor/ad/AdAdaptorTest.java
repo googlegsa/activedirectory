@@ -214,6 +214,57 @@ public class AdAdaptorTest {
   }
 
   @Test
+  public void testGroupCatalogReadFromReturnsUserMissingPrimaryGroup()
+      throws Exception {
+    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
+        defaultLocalizedStringMap(), "example", /*feedBuiltinGroups=*/ false);
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    // add a user
+    String filter = "(|(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
+        + "(&(objectClass=user)(objectCategory=person)))";
+    String searchDn = "DN_for_default_naming_context";
+    ldapContext.addSearchResult(filter, "cn", searchDn, "group_name")
+               .addSearchResult(filter, "objectSid;binary", searchDn,
+                                      // S-1-5-32-544: local Admin. group
+                   hexStringToByteArray("01020000000000052000000020020000"))
+               .addSearchResult(filter, "objectGUID;binary", searchDn,
+                   hexStringToByteArray("000102030405060708090a0b0e"))
+               .addSearchResult(filter, "primaryGroupId", searchDn, "users")
+               .addSearchResult(filter, "sAMAccountName", searchDn, "sam");
+
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+
+    groupCatalog.readFrom(adServer);
+
+    final AdEntity goldenEntity = new AdEntity("S-1-5-32-544",
+        "cn=name\\ under,DN_for_default_naming_context", "users", "sam");
+    final Map<AdEntity, Set<String>> goldenMembers =
+        new HashMap<AdEntity, Set<String>>();
+    final Map<String, AdEntity> goldenSid = new HashMap<String, AdEntity>();
+    goldenSid.put("S-1-5-32-544", goldenEntity);
+    final Map<String, AdEntity> goldenDn = new HashMap<String, AdEntity>();
+    goldenDn.put(goldenEntity.getDn(), goldenEntity);
+    final Map<AdEntity, String> goldenDomain = new HashMap<AdEntity, String>();
+    goldenDomain.put(goldenEntity, "BUILTIN");
+
+    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
+      defaultLocalizedStringMap(), "example.com", /*feedBuiltinGroups=*/ true,
+      /*entities*/ Sets.newHashSet(goldenEntity),
+      /*members*/ goldenMembers,
+      /*bySid*/ goldenSid,
+      /*byDn*/ goldenDn,
+      /*domain*/ goldenDomain);
+
+    assertTrue(golden.equals(groupCatalog));
+
+    // make sure readFrom call is idempotent
+    groupCatalog.readFrom(adServer);
+    assertTrue(golden.equals(groupCatalog));
+  }
+
+  @Test
   public void testGroupCatalogResolveForeignSecurityPrincipals()
       throws Exception {
     Map<String, String> strings = defaultLocalizedStringMap();
