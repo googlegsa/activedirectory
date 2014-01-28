@@ -279,7 +279,7 @@ public class AdAdaptor extends AbstractAdaptor {
         AdEntity primaryGroup = bySid.get(user.getPrimaryGroupSid());
         if (primaryGroup == null) {
           missing_groups++;
-          log.log(Level.FINER,
+          log.log(Level.WARNING,
               "Group {0} -- primary group for user {1} -- not found",
               new Object[]{user.getPrimaryGroupSid(), user});
           continue;
