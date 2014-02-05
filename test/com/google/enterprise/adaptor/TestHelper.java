@@ -34,6 +34,11 @@ public class TestHelper {
       public Config getConfig() {
         return config;
       }
+
+      @Override
+      public void setPollingIncrementalLister(PollingIncrementalLister lister) {
+        // do nothing
+      }
     };
   }
 }

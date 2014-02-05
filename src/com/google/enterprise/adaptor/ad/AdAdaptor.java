@@ -20,6 +20,7 @@ import com.google.enterprise.adaptor.AdaptorContext;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
+import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
@@ -34,7 +35,8 @@ import java.util.logging.Logger;
 import javax.naming.InterruptedNamingException;
 
 /** Adaptor for Active Directory. */
-public class AdAdaptor extends AbstractAdaptor {
+public class AdAdaptor extends AbstractAdaptor
+    implements PollingIncrementalLister {
   private static final Logger log
       = Logger.getLogger(AdAdaptor.class.getName());
   private static final boolean CASE_SENSITIVITY = false;
@@ -68,7 +70,8 @@ public class AdAdaptor extends AbstractAdaptor {
     defaultPassword = context.getConfig().getValue("ad.defaultPassword");
     feedBuiltinGroups = Boolean.parseBoolean(
         context.getConfig().getValue("ad.feedBuiltinGroups"));
-
+    // register for incremental pushes
+    context.setPollingIncrementalLister(this);
     List<Map<String, String>> serverConfigs
         = context.getConfig().getListOfConfigs("ad.servers");
     servers.clear();  // in case init gets called again
@@ -136,15 +139,36 @@ public class AdAdaptor extends AbstractAdaptor {
   @Override
   public void getDocIds(DocIdPusher pusher) throws InterruptedException,
       IOException {
+    readFromAllServers(pusher, false);
+  }
+
+  /**
+   * Attempts an incremntal push of all groups from all AdServers
+   *
+   * When a server cannot do an incremental push, it does a full push.
+   */
+  @Override
+  public void getModifiedDocIds(DocIdPusher pusher) throws InterruptedException,
+      IOException {
+    readFromAllServers(pusher, true);
+  }
+
+  public void readFromAllServers(DocIdPusher pusher,
+      boolean doIncrementalPushIfPossible)
+      throws InterruptedException, IOException {
     // TODO(pjo): implement built in groups
     GroupCatalog cumulativeCatalog = new GroupCatalog(localizedStrings,
         namespace, feedBuiltinGroups);
     for (AdServer server : servers) {
+      String previousServiceName = server.getDsServiceName();
+      String previousInvocationId = server.getInvocationID();
+      long previousHighestUSN = server.getHighestCommittedUSN();
       server.initialize();
       try {
         GroupCatalog catalog = new GroupCatalog(localizedStrings, namespace,
             feedBuiltinGroups);
-        catalog.readFrom(server);
+        catalog.readFrom(server, doIncrementalPushIfPossible,
+            previousServiceName, previousInvocationId, previousHighestUSN);
         cumulativeCatalog.add(catalog);
       } catch (InterruptedNamingException ine) {
         String host = server.getHostName();
@@ -237,7 +261,47 @@ public class AdAdaptor extends AbstractAdaptor {
       this.domain.putAll(domain);
     }
 
-    void readFrom(AdServer server) throws InterruptedNamingException {
+    void readFrom(AdServer server, boolean doIncrementalPushIfPossible,
+        String previousServiceName, String previousInvocationId,
+        long previousHighestUSN) throws InterruptedNamingException {
+      if (!doIncrementalPushIfPossible) {
+        log.log(Level.INFO, "Starting full crawl.");
+        fullCrawl(server);
+        return;
+      }
+      // TODO(myk): Determine whether adaptors should include code to get/set
+      // last full sync time, and if exceeding some threshhold should force a
+      // full crawl.
+      String currentServiceName = server.getDsServiceName();
+      String currentInvocationId = server.getInvocationID();
+      long currentHighestUSN = server.getHighestCommittedUSN();
+      if (!currentServiceName.equals(previousServiceName)) {
+        log.log(Level.WARNING,
+            "Directory Controller changed from {0} to {1} -- performing full "
+            + "recrawl.  Consider configuring AD server to connect directly to "
+            + "FQDN address of domain controller for partial updates support.",
+            new Object[]{previousServiceName, currentServiceName});
+        fullCrawl(server);
+        return;
+      }
+      if (!currentInvocationId.equals(previousInvocationId)) {
+        log.log(Level.WARNING,
+            "Directory Controller {0} has been restored from backup.  "
+            + "Performing full recrawl.", currentServiceName);
+        fullCrawl(server);
+        return;
+      }
+      if (currentHighestUSN == previousHighestUSN) {
+        log.log(Level.INFO, "No updates on server {0} -- no crawl invoked.",
+            server);
+        return;
+      }
+      log.log(Level.INFO, "Starting incremental crawl.");
+      incrementalCrawl(server, previousHighestUSN, currentHighestUSN);
+    }
+
+    @VisibleForTesting
+    void fullCrawl(AdServer server) throws InterruptedNamingException {
       // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
       // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
       entities = server.search("(|(&(objectClass=group)"
@@ -260,6 +324,37 @@ public class AdAdaptor extends AbstractAdaptor {
       resolvePrimaryGroups();
     }
 
+    @VisibleForTesting
+    void incrementalCrawl(AdServer server, long previousHighestUSN,
+        long currentHighestUSN) throws InterruptedNamingException {
+      // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
+      // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
+      Set<AdEntity> newEntities = server.search("(&(uSNChanged>"
+          + previousHighestUSN + ")(|(&(objectClass=group)"
+          + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
+          + "(&(objectClass=user)(objectCategory=person))))",
+          /*deleted=*/ false,
+          new String[] { "uSNChanged", "sAMAccountName", "objectGUID;binary",
+              "objectSid;binary", "userPrincipalName", "primaryGroupId",
+              "member", "userAccountControl" });
+      // disabled groups handled later, in makeDefs()
+      log.log(Level.FINE, "received new {0} entities from server",
+          newEntities.size());
+      for (AdEntity e : newEntities) {
+        bySid.put(e.getSid(), e);
+        byDn.put(e.getDn(), e);
+        //TODO(myk): Handle tombstones / deleted items?
+        entities.add(e);
+        // TODO(pjo): Have AdServer put domain into AdEntity during search
+        domain.put(e, e.getSid().startsWith("S-1-5-32-") ?
+            localizedStrings.get("Builtin") : server.getnETBIOSName());
+      }
+      // TODO(myk): determine if these routines should be optimized to handle
+      // only the newly-discovered entities.
+      initializeMembers();
+      resolvePrimaryGroups();
+    }
+
     private void initializeMembers() {
       for (AdEntity entity : entities) {
         if (entity.isGroup()) {
@@ -270,7 +365,7 @@ public class AdAdaptor extends AbstractAdaptor {
 
     private void resolvePrimaryGroups() {
       int nadds = 0;
-      int missing_groups = 0;
+      int missingGroups = 0;
       for (AdEntity e : entities) {
         if (e.isGroup()) {
           continue;
@@ -278,7 +373,7 @@ public class AdAdaptor extends AbstractAdaptor {
         AdEntity user = e;
         AdEntity primaryGroup = bySid.get(user.getPrimaryGroupSid());
         if (primaryGroup == null) {
-          missing_groups++;
+          missingGroups++;
           log.log(Level.WARNING,
               "Group {0} -- primary group for user {1} -- not found",
               new Object[]{user.getPrimaryGroupSid(), user});
@@ -292,8 +387,8 @@ public class AdAdaptor extends AbstractAdaptor {
         nadds++;
       }
       log.log(Level.FINE, "# primary groups: {0}", members.keySet().size());
-      if (missing_groups > 0) {
-        log.log(Level.FINE, "# missing primary groups: {0}", missing_groups);
+      if (missingGroups > 0) {
+        log.log(Level.FINE, "# missing primary groups: {0}", missingGroups);
       }
       log.log(Level.FINE, "# users added to all primary groups: {0}", nadds);
     }
