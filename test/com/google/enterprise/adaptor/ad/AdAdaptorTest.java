@@ -715,6 +715,10 @@ public class AdAdaptorTest {
               return super.search(filter, deleted, attributes);
             }
           }
+          @Override
+          void recreateLdapContext() {
+            // leave ldapContext unchanged
+          }
         };
       }
     };
@@ -985,7 +989,12 @@ public class AdAdaptorTest {
       } catch (Exception e) {
         fail("Could not create LdapContext:" + e);
       }
-      return new AdServer(host, ldapContext);
+      return new AdServer(host, ldapContext) {
+        @Override
+        void recreateLdapContext() {
+          // leave ldapContext unchanged
+        }
+      };
     }
   }
 }

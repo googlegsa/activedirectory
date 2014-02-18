@@ -103,6 +103,7 @@ public class AdAdaptor extends AbstractAdaptor {
             + host);
       }
       AdServer adServer = newAdServer(method, host, port, principal, passwd);
+      adServer.initialize();
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
       dup.put("password", "XXXXXX");  // hide password
@@ -140,7 +141,6 @@ public class AdAdaptor extends AbstractAdaptor {
     GroupCatalog cumulativeCatalog = new GroupCatalog(localizedStrings,
         namespace, feedBuiltinGroups);
     for (AdServer server : servers) {
-      server.initialize();
       try {
         GroupCatalog catalog = new GroupCatalog(localizedStrings, namespace,
             feedBuiltinGroups);

@@ -48,11 +48,15 @@ public class AdServer {
   private static final Logger LOGGER
       = Logger.getLogger(AdServer.class.getName());
 
-  private final LdapContext ldapContext;
+  private LdapContext ldapContext;
   private final SearchControls searchCtls;
 
-  // properties necessary for connection
+  // properties necessary for connection and reconnection
+  private Method connectMethod;
   private final String hostName;
+  private int port;
+  private String principal;
+  private String password;
 
   // retrieved properties of the Active Directory controller
   private String nETBIOSName;
@@ -68,6 +72,10 @@ public class AdServer {
       int port, String principal, String password) {
     this(hostName, createLdapContext(connectMethod, hostName, port,
         principal, password));
+    this.connectMethod = connectMethod;
+    this.port = port;
+    this.principal = principal;
+    this.password = password;
   }
 
   @VisibleForTesting
@@ -119,6 +127,12 @@ public class AdServer {
     }
   }
 
+  @VisibleForTesting
+  void recreateLdapContext() {
+    ldapContext = createLdapContext(connectMethod, hostName, port, principal,
+        password);
+  }
+
   /**
    * Connects to the Active Directory server and retrieves AD configuration
    * information.
@@ -127,7 +141,15 @@ public class AdServer {
    * against Active Directory.
    */
   public void connect() throws CommunicationException, NamingException {
-    Attributes attributes = ldapContext.getAttributes("");
+    Attributes attributes;
+    try {
+      attributes = ldapContext.getAttributes("");
+    } catch (CommunicationException ce) {
+      LOGGER.log(Level.FINER,
+          "Reconnecting to AdServer after detecting issue", ce);
+      recreateLdapContext();
+      attributes = ldapContext.getAttributes("");
+    }
     dn = attributes.get("defaultNamingContext").get(0).toString();
     dsServiceName = attributes.get("dsServiceName").get(0).toString();
     highestCommittedUSN = Long.parseLong(attributes.get(
@@ -171,6 +193,7 @@ public class AdServer {
   protected Object get(String filter, String attribute, String base) {
     searchCtls.setReturningAttributes(new String[] {attribute});
     try {
+      connect();  // re-establish LDAP connection, if necessary
       NamingEnumeration<SearchResult> ldapResults =
           ldapContext.search(base, filter, searchCtls);
       if (!ldapResults.hasMore()) {
@@ -227,6 +250,7 @@ public class AdServer {
     searchCtls.setReturningAttributes(attributes);
     setControls(deleted);
     try {
+      connect();  // re-establish LDAP connection, if necessary
       byte[] cookie = null;
       do {
         NamingEnumeration<SearchResult> ldapResults =
