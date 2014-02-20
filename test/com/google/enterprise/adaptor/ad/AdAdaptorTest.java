@@ -903,6 +903,10 @@ public class AdAdaptorTest {
               return super.search(filter, deleted, attributes);
             }
           }
+          @Override
+          void recreateLdapContext() {
+            // leave ldapContext unchanged
+          }
         };
       }
     };
@@ -1174,6 +1178,7 @@ public class AdAdaptorTest {
       } catch (Exception e) {
         fail("Could not create LdapContext:" + e);
       }
+<<<<<<< HEAD
       fakeServer = new AdServer(host, ldapContext);
       return fakeServer;
     }
@@ -1209,6 +1214,14 @@ public class AdAdaptorTest {
     void resetCrawlFlags() {
       ranFullCrawl = false;
       ranIncrementalCrawl = false;
+=======
+      return new AdServer(host, ldapContext) {
+        @Override
+        void recreateLdapContext() {
+          // leave ldapContext unchanged
+        }
+      };
+>>>>>>> 5a3b41cfed0457a17ed22df6736176fc3469ee0c
     }
   }
 }

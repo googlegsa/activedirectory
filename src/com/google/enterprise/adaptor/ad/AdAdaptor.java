@@ -106,6 +106,7 @@ public class AdAdaptor extends AbstractAdaptor
             + host);
       }
       AdServer adServer = newAdServer(method, host, port, principal, passwd);
+      adServer.initialize();
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
       dup.put("password", "XXXXXX");  // hide password
