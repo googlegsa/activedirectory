@@ -14,7 +14,11 @@
 
 package com.google.enterprise.adaptor.ad;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import com.google.common.collect.Sets;
 
@@ -30,15 +34,23 @@ import com.google.enterprise.adaptor.UserPrincipal;
 
 import org.junit.Test;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.naming.*;
-import javax.naming.directory.*;
-import javax.naming.ldap.*;
+import javax.naming.InterruptedNamingException;
 
 /** Test cases for {@link AdAdaptor}. */
 public class AdAdaptorTest {
@@ -133,8 +145,7 @@ public class AdAdaptorTest {
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     final AdEntity goldenEntity = new AdEntity("S-1-0-0",
         "cn=name\\ under,DN_for_default_naming_context");
@@ -188,8 +199,7 @@ public class AdAdaptorTest {
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     AdEntity[] groupEntity = groupCatalog.entities.toArray(new AdEntity[0]);
     final AdEntity goldenEntity = groupEntity[0];
@@ -251,8 +261,7 @@ public class AdAdaptorTest {
     adServer.initialize();
 
     groupCatalog.bySid.put("S-1-5-32-users", userGroup);
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     final AdEntity goldenEntity = new AdEntity("S-1-5-32-544",
         "cn=name\\ under,DN_for_default_naming_context", "users", "sam");
@@ -277,9 +286,8 @@ public class AdAdaptorTest {
 
     assertTrue(golden.equals(groupCatalog));
 
-    // make sure readFrom call is idempotent
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    // make sure readEverythingFrom call is idempotent
+    groupCatalog.readEverythingFrom(adServer);
     assertTrue(golden.equals(groupCatalog));
   }
 
@@ -306,8 +314,7 @@ public class AdAdaptorTest {
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     final AdEntity goldenEntity = new AdEntity("S-1-5-32-544",
         "cn=name\\ under,DN_for_default_naming_context", "users", "sam");
@@ -330,35 +337,9 @@ public class AdAdaptorTest {
 
     assertTrue(golden.equals(groupCatalog));
 
-    // make sure readFrom call is idempotent
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    // make sure readEverythingFrom call is idempotent
+    groupCatalog.readEverythingFrom(adServer);
     assertTrue(golden.equals(groupCatalog));
-  }
-
-  @Test
-  public void testGetModifiedDocIdsCallsReadFromAllServersCorrectly()
-      throws Exception {
-    FakeAdaptor adAdaptor = new FakeAdaptor() {
-    boolean attemptedIncrementalPush = false;
-      @Override
-      public void readFromAllServers(DocIdPusher pusher,
-          boolean doIncrementalPushIfPossible)
-          throws InterruptedException, IOException {
-        attemptedIncrementalPush = true;
-      }
-      @Override
-      public boolean equals(Object o) {
-        boolean results = attemptedIncrementalPush;
-        attemptedIncrementalPush = false;
-        return results;
-      }
-    };
-
-    assertFalse(adAdaptor.equals(null));
-    adAdaptor.getModifiedDocIds(null);
-    assertTrue(adAdaptor.equals(null));
-    assertFalse(adAdaptor.equals(null));
   }
 
   @Test
@@ -372,42 +353,40 @@ public class AdAdaptorTest {
     // the following 3 lines initialize AdAdAptor.
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     Map<String, String> configEntries = defaultConfig();
-    pushGroupDefinitions(adAdaptor, configEntries, pusher);
 
     groupCatalog.resetCrawlFlags();
-    assertFalse(groupCatalog.ranFullCrawl);
-    assertFalse(groupCatalog.ranIncrementalCrawl);
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
 
-    groupCatalog.readFrom(adAdaptor.getServer(), false, "ds_service_name",
+    groupCatalog.readEverythingFrom(adServer);
+    assertTrue(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
+
+    groupCatalog.resetCrawlFlags();
+    groupCatalog.readUpdatesFrom(adServer, "other_ds_service_name",
         "0x0123456789abc", 12345678L);
-    assertTrue(groupCatalog.ranFullCrawl);
-    assertFalse(groupCatalog.ranIncrementalCrawl);
+    assertTrue(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
 
     groupCatalog.resetCrawlFlags();
-    groupCatalog.readFrom(adAdaptor.getServer(), true, "other_ds_service_name",
-        "0x0123456789abc", 12345678L);
-    assertTrue(groupCatalog.ranFullCrawl);
-    assertFalse(groupCatalog.ranIncrementalCrawl);
-
-    groupCatalog.resetCrawlFlags();
-    groupCatalog.readFrom(adAdaptor.getServer(), true, "ds_service_name",
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name",
         "otherInvocationId", 12345678L);
-    assertTrue(groupCatalog.ranFullCrawl);
-    assertFalse(groupCatalog.ranIncrementalCrawl);
+    assertTrue(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
 
     groupCatalog.resetCrawlFlags();
-    groupCatalog.readFrom(adAdaptor.getServer(), true, "ds_service_name",
-        "0x0123456789abc", 12345678L); // last USN as previous run: no crawl
-    assertFalse(groupCatalog.ranFullCrawl);
-    assertFalse(groupCatalog.ranIncrementalCrawl);
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name", "0x0123456789abc",
+        12345678L); // last USN as previous run: no crawl
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
 
     // call Incremental call (only) when it's desired and the service name and
     // invocation ID both match and the HighestUSN does not match.
     groupCatalog.resetCrawlFlags();
-    groupCatalog.readFrom(adAdaptor.getServer(), true, "ds_service_name",
-        "0x0123456789abc", 12345677L);
-    assertFalse(groupCatalog.ranFullCrawl);
-    assertTrue(groupCatalog.ranIncrementalCrawl);
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name", "0x0123456789abc",
+        12345677L);
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertTrue(groupCatalog.ranIncrementalCrawl());
   }
 
   @Test
@@ -421,7 +400,7 @@ public class AdAdaptorTest {
     String filter = "(|(&(objectClass=group)"
         + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
         + "(&(objectClass=user)(objectCategory=person)))";
-    String incrementalFilter = "(&(uSNChanged>12345677)" + filter + ")";
+    String incrementalFilter = "(&(uSNChanged>=12345678)" + filter + ")";
     String searchDn = "DN_for_default_naming_context";
     List<String> members = Arrays.asList("dn_for_user_1", "dn_for_user_2");
     ldapContext.addSearchResult(filter, "cn", searchDn, "group_name")
@@ -456,12 +435,11 @@ public class AdAdaptorTest {
     adServer.initialize();
 
     // first, do a full crawl
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     // now do an incremental crawl
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ true,
-        "ds_service_name", "0x0123456789abc", 12345677L);
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name", "0x0123456789abc",
+        12345677L);
 
     // extract incrementally-added user as one golden entity
     Set<AdEntity> incrementalUserSet = adServer.search(incrementalFilter, false,
@@ -508,8 +486,6 @@ public class AdAdaptorTest {
       /*bySid*/ goldenSid,
       /*byDn*/ goldenDn,
       /*domain*/ goldenDomain);
-
-    assertTrue(golden.equals(groupCatalog));
   }
 
   @Test
@@ -549,8 +525,7 @@ public class AdAdaptorTest {
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     // add two additional entities to test all branches of our method.
     // first -- a user
@@ -632,8 +607,7 @@ public class AdAdaptorTest {
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     tweakGroupCatalogForMakeDefs(groupCatalog, adServer, false);
 
@@ -662,8 +636,7 @@ public class AdAdaptorTest {
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     tweakGroupCatalogForMakeDefs(groupCatalog, adServer, true);
 
@@ -702,8 +675,7 @@ public class AdAdaptorTest {
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
-    groupCatalog.readFrom(adServer, /*doIncrementalPushIfPossible=*/ false,
-        "ds_service_name", "0x0123456789abc", 12345678L);
+    groupCatalog.readEverythingFrom(adServer);
 
     tweakGroupCatalogForMakeDefs(groupCatalog, adServer, false);
     // now replace the parent group with a well-known one
@@ -785,7 +757,7 @@ public class AdAdaptorTest {
     configEntries.put("ad.defaultPassword", "password");
     configEntries.put("server.port", "5680");
     configEntries.put("server.dashboardPort", "5681");
-    pushGroupDefinitions(adAdaptor, configEntries, pusher);
+    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true);
     Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
     // the above (eventually) calls AdAdaptor.init() with the specified config.
   }
@@ -855,7 +827,7 @@ public class AdAdaptorTest {
     AdAdaptor adAdaptor = new FakeAdaptor();
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     Map<String, String> configEntries = defaultConfig();
-    pushGroupDefinitions(adAdaptor, configEntries, pusher);
+    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true);
     Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
 
     final Map<GroupPrincipal, Collection<Principal>> goldenGroups =
@@ -873,7 +845,12 @@ public class AdAdaptorTest {
     assertEquals(goldenGroups, results);
 
     // make sure pushGroupDefinitions call is idempotent
-    pushGroupDefinitions(adAdaptor, configEntries, pusher);
+    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true);
+    results = pusher.getGroups();
+    assertEquals(goldenGroups, results);
+
+    // even when doing an incremental push
+    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ false);
     results = pusher.getGroups();
     assertEquals(goldenGroups, results);
   }
@@ -913,7 +890,8 @@ public class AdAdaptorTest {
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     Map<String, String> configEntries = defaultConfig();
     try {
-      pushGroupDefinitions(adAdaptor, configEntries, pusher);
+      pushGroupDefinitions(adAdaptor, configEntries, pusher,
+          /*fullPush=*/ true);
       fail("Did not catch expected IOException.");
     } catch (IOException ioe) {
       assertTrue(ioe.getCause().getMessage().equals("Catch me if you can!"));
@@ -1062,14 +1040,15 @@ public class AdAdaptorTest {
     adaptor.init(TestHelper.createConfigAdaptorContext(config));
   }
 
-  /**
-   * Copied in from TestHelper (from the library)
-   */
-  public static void pushGroupDefinitions(Adaptor adaptor,
-      Map<String, String> configEntries, final DocIdPusher pusher)
-      throws Exception {
+  public static void pushGroupDefinitions(AdAdaptor adaptor,
+      Map<String, String> configEntries, final DocIdPusher pusher,
+      boolean fullPush) throws Exception {
     initializeAdaptorConfig(adaptor, configEntries);
-    adaptor.getDocIds(pusher);
+    if (fullPush) {
+      adaptor.getDocIds(pusher);
+    } else {
+      adaptor.getModifiedDocIds(pusher);
+    }
   }
 
   /**
@@ -1168,7 +1147,6 @@ public class AdAdaptorTest {
 
   /** A version of AdAdaptor that uses only mock AdServers */
   public class FakeAdaptor extends AdAdaptor {
-    private AdServer fakeServer = null;
     @Override
     AdServer newAdServer(Method method, String host, int port,
         String principal, String passwd) {
@@ -1178,20 +1156,19 @@ public class AdAdaptorTest {
       } catch (Exception e) {
         fail("Could not create LdapContext:" + e);
       }
-<<<<<<< HEAD
-      fakeServer = new AdServer(host, ldapContext);
-      return fakeServer;
-    }
-
-    AdServer getServer() {
-      return fakeServer;
+      return new AdServer(host, ldapContext) {
+        @Override
+        void recreateLdapContext() {
+          // leave ldapContext unchanged
+        }
+      };
     }
   };
 
   /** Simple Fake of GroupCatalog that tracks calls to full/incremental crawl */
-  public class FakeCatalog extends AdAdaptor.GroupCatalog {
-    boolean ranFullCrawl;
-    boolean ranIncrementalCrawl;
+  private static class FakeCatalog extends AdAdaptor.GroupCatalog {
+    private boolean ranFullCrawl;
+    private boolean ranIncrementalCrawl;
 
     public FakeCatalog(Map<String, String> localizedStrings, String namespace,
         boolean feedBuiltinGroups) {
@@ -1199,29 +1176,30 @@ public class AdAdaptorTest {
     }
 
     @Override
-    void fullCrawl(AdServer server) throws InterruptedNamingException {
+    void readEverythingFrom(AdServer server) throws InterruptedNamingException {
       ranIncrementalCrawl = false;
       ranFullCrawl = true;
     }
 
     @Override
-    void incrementalCrawl(AdServer server, long previousHighestUSN,
+    Set<AdEntity> incrementalCrawl(AdServer server, long previousHighestUSN,
         long currentHighestUSN) throws InterruptedNamingException {
       ranFullCrawl = false;
       ranIncrementalCrawl = true;
+      return Collections.emptySet();
     }
 
     void resetCrawlFlags() {
       ranFullCrawl = false;
       ranIncrementalCrawl = false;
-=======
-      return new AdServer(host, ldapContext) {
-        @Override
-        void recreateLdapContext() {
-          // leave ldapContext unchanged
-        }
-      };
->>>>>>> 5a3b41cfed0457a17ed22df6736176fc3469ee0c
+    }
+
+    public boolean ranIncrementalCrawl() {
+      return ranIncrementalCrawl;
+    }
+
+    public boolean ranFullCrawl() {
+      return ranFullCrawl;
     }
   }
 }

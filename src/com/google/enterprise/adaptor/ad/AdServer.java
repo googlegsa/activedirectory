@@ -17,17 +17,12 @@ package com.google.enterprise.adaptor.ad;
 import com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
-import java.sql.Timestamp;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
-import java.util.Map;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import javax.naming.AuthenticationException;
-import javax.naming.AuthenticationNotSupportedException;
 import javax.naming.CommunicationException;
 import javax.naming.Context;
 import javax.naming.InterruptedNamingException;
@@ -111,7 +106,7 @@ public class AdServer {
         "com.sun.jndi.ldap.LdapCtxFactory");
     // Connecting to configuration naming context is very slow for crawl users
     // in large multidomain environment, which belong to thousands of groups
-    // TODO: make this configurable
+    // TODO(pjo or myk): make this configurable
     env.put("com.sun.jndi.ldap.read.timeout", "90000");
     env.put(Context.SECURITY_AUTHENTICATION, "simple");
     env.put(Context.SECURITY_PRINCIPAL, principal);
@@ -136,11 +131,13 @@ public class AdServer {
   /**
    * Connects to the Active Directory server and retrieves AD configuration
    * information.
-   *
-   * This method is used for crawling as well as authorization of credentials
-   * against Active Directory.
+   * <p>This method is used for crawling as well as authorization of credentials
+   * against Active Directory.  Calling this method after a connection has been
+   * established will refresh the connection attributes (e.g.
+   * <code>highestCommittedUSN</code>).
    */
-  public void connect() throws CommunicationException, NamingException {
+  public void ensureConnectionIsCurrent()
+      throws CommunicationException, NamingException {
     Attributes attributes;
     try {
       attributes = ldapContext.getAttributes("");
@@ -160,7 +157,7 @@ public class AdServer {
 
   public void initialize() {
     try {
-      connect();
+      ensureConnectionIsCurrent();
       sid = AdEntity.getTextSid((byte[]) get(
           "distinguishedName=" + dn, "objectSid;binary", dn));
       invocationID = AdEntity.getTextGuid((byte[]) get(
@@ -193,7 +190,7 @@ public class AdServer {
   protected Object get(String filter, String attribute, String base) {
     searchCtls.setReturningAttributes(new String[] {attribute});
     try {
-      connect();  // re-establish LDAP connection, if necessary
+      ensureConnectionIsCurrent();
       NamingEnumeration<SearchResult> ldapResults =
           ldapContext.search(base, filter, searchCtls);
       if (!ldapResults.hasMore()) {
@@ -250,7 +247,7 @@ public class AdServer {
     searchCtls.setReturningAttributes(attributes);
     setControls(deleted);
     try {
-      connect();  // re-establish LDAP connection, if necessary
+      ensureConnectionIsCurrent();
       byte[] cookie = null;
       do {
         NamingEnumeration<SearchResult> ldapResults =
@@ -299,7 +296,7 @@ public class AdServer {
               "Retrieving additional groups for [" + g + "] " + memberRange);
           searchCtls.setReturningAttributes(new String[] {memberRange});
           NamingEnumeration<SearchResult> ldapResults = ldapContext.search(
-              dn, "(sAMAccountName=" + g.getSAMAccountName() +")", searchCtls);
+              dn, "(sAMAccountName=" + g.getSAMAccountName() + ")", searchCtls);
           SearchResult sr = ldapResults.next();
           int found = g.appendGroups(sr);
           start += found;
