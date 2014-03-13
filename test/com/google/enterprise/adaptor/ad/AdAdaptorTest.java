@@ -283,6 +283,7 @@ public class AdAdaptorTest {
       /*bySid*/ goldenSid,
       /*byDn*/ goldenDn,
       /*domain*/ goldenDomain);
+    golden.wellKnownMembership.get(golden.everyone).add(goldenEntity.getDn());
 
     assertTrue(golden.equals(groupCatalog));
 

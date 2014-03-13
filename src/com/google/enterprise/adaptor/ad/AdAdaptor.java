@@ -30,7 +30,6 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -223,7 +222,7 @@ public class AdAdaptor extends AbstractAdaptor
         long previousHighestUSN = server.getHighestCommittedUSN();
         try {
           server.ensureConnectionIsCurrent();
-          // TODO(myk): combine each server's resulting Entities into a single
+          // TODO(myk): combine each server's resulting Entities into one Set
           lastCompleteGroupCatalog.readUpdatesFrom(server, previousServiceName,
               previousInvocationId, previousHighestUSN);
         } catch (NamingException ne) {
@@ -485,7 +484,7 @@ public class AdAdaptor extends AbstractAdaptor
      */
     private void resolvePrimaryGroups(Set<AdEntity> entities) {
       int nadds = 0;
-      int missing_groups = 0;  // TODO(myk): rename this so that lint is happy
+      int missingGroups = 0;
       for (AdEntity e : entities) {
         if (e.isGroup()) {
           continue;
@@ -493,7 +492,7 @@ public class AdAdaptor extends AbstractAdaptor
         AdEntity user = e;
         AdEntity primaryGroup = bySid.get(user.getPrimaryGroupSid());
         if (primaryGroup == null) {
-          missing_groups++;
+          missingGroups++;
           log.log(Level.WARNING,
               "Group {0} -- primary group for user {1} -- not found",
               new Object[]{user.getPrimaryGroupSid(), user});
@@ -507,8 +506,8 @@ public class AdAdaptor extends AbstractAdaptor
         nadds++;
       }
       log.log(Level.FINE, "# primary groups: {0}", members.keySet().size());
-      if (missing_groups > 0) {
-        log.log(Level.FINE, "# missing primary groups: {0}", missing_groups);
+      if (missingGroups > 0) {
+        log.log(Level.FINE, "# missing primary groups: {0}", missingGroups);
       }
       log.log(Level.FINE, "# users added to all primary groups: {0}", nadds);
     }
@@ -661,14 +660,9 @@ public class AdAdaptor extends AbstractAdaptor
       bySid.putAll(other.bySid);
       byDn.putAll(other.byDn);
       domain.putAll(other.domain);
-      //TODO(pjo): Add equal method to AdEntity so that we can loop here on
-      // keyset for wellKnownMembership
-      wellKnownMembership.get(everyone).addAll(
-          other.wellKnownMembership.get(other.everyone));
-      wellKnownMembership.get(interactive).addAll(
-          other.wellKnownMembership.get(other.interactive));
-      wellKnownMembership.get(authenticatedUsers).addAll(
-          other.wellKnownMembership.get(other.authenticatedUsers));
+      for (Object o : wellKnownMembership.keySet()) {
+        wellKnownMembership.get(o).addAll(other.wellKnownMembership.get(o));
+      }
     }
 
     void clear() {
@@ -696,8 +690,8 @@ public class AdAdaptor extends AbstractAdaptor
           && members.equals(gc.members)
           && bySid.equals(gc.bySid)
           && byDn.equals(gc.byDn)
-          && domain.equals(gc.domain);
-          // TODO(myk): If needed, add equality check for wellKnownMembership
+          && domain.equals(gc.domain)
+          && wellKnownMembership.equals(gc.wellKnownMembership);
     }
   }
 }
