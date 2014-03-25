@@ -1,5 +1,6 @@
 <project name="plexi.ad" default="build" basedir=".">
   <description>Active Directory Adaptor</description>
+  <tstamp/>
   <property name="src.dir" location="src"/>
   <property name="test.dir" location="test"/>
   <property name="test.class" value="*Test"/>
@@ -23,7 +24,11 @@
   <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
   <!-- Adaptor suffix for distribution files. Useful for placing version numbers
        on our jars. -->
-  <property name="adaptor.suffix" value=""/>
+  <condition property="adaptor.suffix" value="-${adaptor.version}">
+    <isset property="adaptor.version"/>
+  </condition>
+  <!-- If adaptor.version isn't set, simply use the current date. -->
+  <property name="adaptor.suffix" value="-${DSTAMP}"/>
 
   <path id="adaptor.build.classpath">
 <!--
@@ -125,11 +130,21 @@ lib/plexi submodule or add the the command line argument
     </javac>
   </target>
 
+  <target name="-discover-version" unless="adaptor.version">
+    <exec executable="git" outputproperty="adaptor.version"
+      logError="true" failifexecutionfails="false">
+      <arg value="describe"/>
+      <arg value="--always"/>
+    </exec>
+    <!-- Set version if git describe failed. -->
+    <property name="adaptor.version" value="unknown"/>
+  </target>
+
   <target name="dist" description="Generate distribution binaries"
     depends="clean,test,package"/>
 
   <target name="package" description="Generate binaries"
-    depends="build,javadoc">
+    depends="build,javadoc,-discover-version">
     <property name="dist.staging.dir" value="${build.dir}/dist/staging"/>
 
     <delete dir="${build.dir}/dist"/>
@@ -150,6 +165,13 @@ lib/plexi submodule or add the the command line argument
       <manifest>
         <attribute name="Main-Class" value="${adaptor.class}"/>
         <attribute name="Class-Path" value="${tmp.adaptor.classpath}"/>
+        <section name="com/google/enterprise/adaptor/ad/">
+          <attribute name="Implementation-Title"
+            value="Google Active Directory Adaptor"/>
+          <attribute name="Implementation-Vendor" value="Google Inc."/>
+          <attribute name="Implementation-Version"
+            value="${adaptor.version}"/>
+        </section>
       </manifest>
     </jar>
 
