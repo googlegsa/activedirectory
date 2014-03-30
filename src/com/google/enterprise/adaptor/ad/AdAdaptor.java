@@ -82,16 +82,18 @@ public class AdAdaptor extends AbstractAdaptor
 
   @Override
   public void init(AdaptorContext context) throws Exception {
-    namespace = context.getConfig().getValue("adaptor.namespace");
+    Config config = context.getConfig();
+    namespace = config.getValue("adaptor.namespace");
     log.config("common namespace: " + namespace);
-    defaultUser = context.getConfig().getValue("ad.defaultUser");
-    defaultPassword = context.getConfig().getValue("ad.defaultPassword");
+    defaultUser = config.getValue("ad.defaultUser");
+    defaultPassword = context.getSensitiveValueDecoder().decodeValue(
+        config.getValue("ad.defaultPassword"));
     feedBuiltinGroups = Boolean.parseBoolean(
-        context.getConfig().getValue("ad.feedBuiltinGroups"));
+        config.getValue("ad.feedBuiltinGroups"));
     // register for incremental pushes
     context.setPollingIncrementalLister(this);
     List<Map<String, String>> serverConfigs
-        = context.getConfig().getListOfConfigs("ad.servers");
+        = config.getListOfConfigs("ad.servers");
     servers.clear();  // in case init gets called again
     for (Map<String, String> singleServerConfig : serverConfigs) {
       String host = singleServerConfig.get("host");
@@ -115,7 +117,8 @@ public class AdAdaptor extends AbstractAdaptor
       if (principal.isEmpty()) {
         throw new IllegalStateException("user not specified for host " + host);
       }
-      String passwd = singleServerConfig.get("password");
+      String passwd = context.getSensitiveValueDecoder().decodeValue(
+          singleServerConfig.get("password"));
       if (null == passwd) {
         passwd = defaultPassword;
       }
@@ -130,7 +133,7 @@ public class AdAdaptor extends AbstractAdaptor
       dup.put("password", "XXXXXX");  // hide password
       log.log(Level.CONFIG, "AD server spec: {0}", dup);
     }
-    localizedStrings = context.getConfig().getValuesWithPrefix("ad.localized.");
+    localizedStrings = config.getValuesWithPrefix("ad.localized.");
   }
 
   /**

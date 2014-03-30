@@ -17,8 +17,8 @@ package com.google.enterprise.adaptor;
 /**
  * Utility methods for tests.
  *
- * <p>This code is needed (as part of this package, and not the <code>ad</code>
- * subclass) to work around visibility issues on the <code>Config</code> class.
+ * <p>This code lives in adaptor package instead of adaptor.ad package
+ * to work around visibility of <code>Config</code> class.
  */
 public class TestHelper {
   // Prevent instantiation
@@ -27,6 +27,14 @@ public class TestHelper {
   public static void setConfigValue(Config config, String key, String value) {
     config.setValue(key, value);
   }
+
+  private static final SensitiveValueDecoder SENSITIVE_VALUE_DECODER
+      = new SensitiveValueDecoder() {
+    @Override
+    public String decodeValue(String notEncodedDuringTesting) {
+      return notEncodedDuringTesting;
+    }
+  };
 
   public static AdaptorContext createConfigAdaptorContext(final Config config) {
     return new WrapperAdaptor.WrapperAdaptorContext(null) {
@@ -38,6 +46,11 @@ public class TestHelper {
       @Override
       public void setPollingIncrementalLister(PollingIncrementalLister lister) {
         // do nothing
+      }
+
+      @Override
+      public SensitiveValueDecoder getSensitiveValueDecoder() {
+        return SENSITIVE_VALUE_DECODER;
       }
     };
   }
