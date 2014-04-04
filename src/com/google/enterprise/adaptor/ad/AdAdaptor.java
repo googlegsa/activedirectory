@@ -30,6 +30,7 @@ import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -187,12 +188,14 @@ public class AdAdaptor extends AbstractAdaptor
       clearLastCompleteGroupCatalog();
       GroupCatalog cumulativeCatalog = makeFullCatalog();
       // all servers were able to successfully populate the catalog: do a push
-      cumulativeCatalog.resolveForeignSecurityPrincipals();
+      // TODO(myk): Rework the structure so that a member variable of
+      // cumulativeCatalog isn't passed in as a parameter to its own method.
+      cumulativeCatalog.resolveForeignSecurityPrincipals(
+          cumulativeCatalog.entities);
       Map<GroupPrincipal, List<Principal>> groups =
-          cumulativeCatalog.makeDefs();
+          cumulativeCatalog.makeDefs(cumulativeCatalog.entities);
       pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
-      // TODO(myk): clear membership information from cache - retain only the
-      // entities in bySid, byDn, and wellKnownMembership.
+      cumulativeCatalog.members.clear();
       lastCompleteGroupCatalog = cumulativeCatalog;
     } finally {
       mutex.unlock();
@@ -200,8 +203,8 @@ public class AdAdaptor extends AbstractAdaptor
     }
   }
 
-  private GroupCatalog makeFullCatalog() throws InterruptedException,
-      IOException {
+  @VisibleForTesting
+  GroupCatalog makeFullCatalog() throws InterruptedException, IOException {
     GroupCatalog cumulativeCatalog = new GroupCatalog(localizedStrings,
         namespace, feedBuiltinGroups);
     for (AdServer server : servers) {
@@ -209,7 +212,7 @@ public class AdAdaptor extends AbstractAdaptor
         server.ensureConnectionIsCurrent();
         GroupCatalog catalog = new GroupCatalog(localizedStrings, namespace,
               feedBuiltinGroups);
-        catalog.readEverythingFrom(server);
+        catalog.readEverythingFrom(server, /*includeMembers=*/ true);
         cumulativeCatalog.add(catalog);
       } catch (NamingException ne) {
         String host = server.getHostName();
@@ -224,8 +227,7 @@ public class AdAdaptor extends AbstractAdaptor
    * <p>
    * When a server cannot do an incremental push, it does a full crawl without
    * doing a push afterwards -- this sets up its state so that subsequent
-   * incremental pushes can work.  A future version of this method will do the
-   * full crawl ignoring the "member" attribute.
+   * incremental pushes can work.
    */
   @Override
   public void getModifiedDocIds(DocIdPusher pusher) throws InterruptedException,
@@ -237,37 +239,48 @@ public class AdAdaptor extends AbstractAdaptor
     }
     try {
       log.log(Level.FINE, "getModifiedDocIds starting - acquired lock.");
-
-      for (AdServer server : servers) {
-        String previousServiceName = server.getDsServiceName();
-        String previousInvocationId = server.getInvocationID();
-        long previousHighestUSN = server.getHighestCommittedUSN();
-        try {
-          server.ensureConnectionIsCurrent();
-          // TODO(myk): combine each server's resulting Entities into one Set
-          lastCompleteGroupCatalog.readUpdatesFrom(server, previousServiceName,
-              previousInvocationId, previousHighestUSN);
-        } catch (NamingException ne) {
-          // invalidate the saved group catalog
-          clearLastCompleteGroupCatalog();
-          String host = server.getHostName();
-          throw new IOException("could not get entities from " + host, ne);
-        }
-      }
-
-      // all servers were able to successfully update the catalog: do a push
-      lastCompleteGroupCatalog.resolveForeignSecurityPrincipals();
-      Map<GroupPrincipal, List<Principal>> groups =
-          lastCompleteGroupCatalog.makeDefs();
-      // TODO(myk): pass on (only) new/modified entities to resolve/makeDefs,
-      // so that we're only pushing the new/modified groups below.
-      pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
-      // TODO(myk): clear membership information from cache - retain only the
-      // entities in bySid, byDn, and wellKnownMembership.
+      getModifiedDocIdsHelper(pusher);
     } finally {
       mutex.unlock();
       log.log(Level.FINE, "getModifiedDocIds ending - lock released.");
     }
+  }
+
+  @VisibleForTesting
+  void getModifiedDocIdsHelper(DocIdPusher pusher) throws InterruptedException,
+      IOException {
+    if (lastCompleteGroupCatalog == null) {
+      log.log(Level.FINE, "getModifiedDocIds doing a fetch with no push.");
+      lastCompleteGroupCatalog = makeFullCatalog();
+      return;
+    }
+
+    Set<AdEntity> allNewOrUpdatedEntities = new HashSet<AdEntity>();
+    for (AdServer server : servers) {
+      String previousServiceName = server.getDsServiceName();
+      String previousInvocationId = server.getInvocationID();
+      long previousHighestUSN = server.getHighestCommittedUSN();
+      try {
+        server.ensureConnectionIsCurrent();
+        allNewOrUpdatedEntities.addAll(
+            lastCompleteGroupCatalog.readUpdatesFrom(server,
+                previousServiceName, previousInvocationId,
+                previousHighestUSN));
+      } catch (NamingException ne) {
+        // invalidate the saved group catalog
+        clearLastCompleteGroupCatalog();
+        String host = server.getHostName();
+        throw new IOException("could not get entities from " + host, ne);
+      }
+    }
+
+    // all servers were able to successfully update the catalog: do a push
+    lastCompleteGroupCatalog.resolveForeignSecurityPrincipals(
+        allNewOrUpdatedEntities);
+    Map<GroupPrincipal, List<Principal>> groups =
+        lastCompleteGroupCatalog.makeDefs(allNewOrUpdatedEntities);
+    pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
+    lastCompleteGroupCatalog.members.clear();
   }
 
   // don't expose the <code>lastCompleteGroupCatalog</code> field, but do allow
@@ -357,9 +370,14 @@ public class AdAdaptor extends AbstractAdaptor
     }
 
     @VisibleForTesting
-    void readEverythingFrom(AdServer server) throws InterruptedNamingException {
-      // TODO(myk): Phase II: indicate whether or not this search should
-      // include members
+    void readEverythingFrom(AdServer server, boolean includeMembers)
+        throws InterruptedNamingException {
+      final String[] nonMemberAttributes = new String[] { "uSNChanged",
+          "sAMAccountName", "objectGUID;binary", "objectSid;binary",
+          "userPrincipalName", "primaryGroupId", "userAccountControl" };
+      final String[] allAttributes = Arrays.copyOf(nonMemberAttributes,
+          nonMemberAttributes.length + 1);
+      allAttributes[nonMemberAttributes.length] = "member";
       log.log(Level.FINE, "Starting full crawl.");
       // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
       // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
@@ -367,9 +385,7 @@ public class AdAdaptor extends AbstractAdaptor
           + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
           + "(&(objectClass=user)(objectCategory=person)))",
           /*deleted=*/ false,
-          new String[] { "uSNChanged", "sAMAccountName", "objectGUID;binary",
-              "objectSid;binary", "userPrincipalName", "primaryGroupId",
-              "member", "userAccountControl" });
+          includeMembers ? allAttributes : nonMemberAttributes);
       // disabled groups handled later, in makeDefs()
       log.log(Level.FINE, "Ending full crawl - now starting processing.");
       processEntities(entities, server.getnETBIOSName());
@@ -392,14 +408,13 @@ public class AdAdaptor extends AbstractAdaptor
      * @param previousHighestUSN last-crawled value of
      *     <code>server.getHighestCommittedUSN()</code>
      * <code>previousHighestUSN</code>.
-     */
-     /* TODO(myk): add
+     *
      * @return all instances of <code>AdEntity</code> that are users/groups that
      *     have a <code>uSNChanged</code> attribute newer than, or
      *     <code>Collections.emptySet()</code> when the cache had been stale.
      */
     @VisibleForTesting
-    void readUpdatesFrom(AdServer server, String previousServiceName,
+    Set<AdEntity> readUpdatesFrom(AdServer server, String previousServiceName,
         String previousInvocationId, long previousHighestUSN)
         throws InterruptedNamingException {
       // TODO(myk): Determine whether adaptors should include code to get/set
@@ -417,26 +432,23 @@ public class AdAdaptor extends AbstractAdaptor
               + "partial updates support.",
               new Object[]{previousServiceName, currentServiceName});
         }
-        readEverythingFrom(server);
-        return;
-        //TODO(myk): return Collections.emptySet();
+        readEverythingFrom(server, /*includeMembers=*/ false);
+        return Collections.emptySet();
       }
       if (!currentInvocationId.equals(previousInvocationId)) {
         log.log(Level.WARNING,
             "Directory Controller {0} has been restored from backup.  "
             + "Performing full recrawl.", currentServiceName);
-        readEverythingFrom(server);
-        return;
-        //TODO(myk): return Collections.emptySet();
+        readEverythingFrom(server, /*includeMembers=*/ false);
+        return Collections.emptySet();
       }
       if (currentHighestUSN == previousHighestUSN) {
         log.log(Level.INFO, "No updates on server {0} -- no crawl invoked.",
             server);
-        return;
-        //TODO(myk): return Collections.emptySet();
+        return Collections.emptySet();
       }
       log.log(Level.INFO, "Attempting incremental crawl.");
-      incrementalCrawl(server, previousHighestUSN, currentHighestUSN);
+      return incrementalCrawl(server, previousHighestUSN, currentHighestUSN);
     }
 
     private void processEntities(Set<AdEntity> entities, String nETBIOSName) {
@@ -459,7 +471,6 @@ public class AdAdaptor extends AbstractAdaptor
       log.log(Level.FINE, "Starting incremental crawl.");
       // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
       // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
-      // TODO(myk): Phase II: indicate that this search should exclude members
       Set<AdEntity> newOrModifiedEntities = server.search("(&(uSNChanged>="
           + (previousHighestUSN + 1) + ")(|(&(objectClass=group)"
           + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
@@ -534,9 +545,7 @@ public class AdAdaptor extends AbstractAdaptor
       log.log(Level.FINE, "# users added to all primary groups: {0}", nadds);
     }
 
-    void resolveForeignSecurityPrincipals() {
-      //TODO(myk) Phase II: pass in only the entities just read in (for an
-      // incremental search to only consider those entities)
+    void resolveForeignSecurityPrincipals(Set<AdEntity> entities) {
       int nGroups = 0;
       int nNullSid = 0;
       int nNullResolution = 0;
@@ -572,10 +581,8 @@ public class AdAdaptor extends AbstractAdaptor
       log.log(Level.FINE, "#resolved: {0}", nResolved);
     }
 
-    Map<GroupPrincipal, List<Principal>> makeDefs() {
+    Map<GroupPrincipal, List<Principal>> makeDefs(Set<AdEntity> entities) {
       // Merge members with well known group members
-      //TODO(myk) Phase II: pass in only the entities just read in (for an
-      // incremental search to only consider those entities)
       Map<AdEntity, Set<String>> allMembers
           = new HashMap<AdEntity, Set<String>>(members);
       allMembers.putAll(wellKnownMembership);
