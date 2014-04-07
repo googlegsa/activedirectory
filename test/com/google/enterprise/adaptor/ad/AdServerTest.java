@@ -40,56 +40,71 @@ public class AdServerTest {
   @Test
   public void testNPEOnNullConnectMethod() {
     thrown.expect(NullPointerException.class);
-    AdServer adServer = new AdServer(null, "hostname", 1234, "principal", "pw");
+    AdServer adServer = new AdServer(null, "hostname", 1234, "principal", "pw",
+        "90000");
   }
 
   @Test
   public void testNPEOnNullHostname() {
     thrown.expect(NullPointerException.class);
-    AdServer adServer = new AdServer(Method.SSL, null, 1234, "principal", "pw");
+    AdServer adServer = new AdServer(Method.SSL, null, 1234, "principal", "pw",
+        "90000");
   }
 
   @Test
   public void testIAEOnEmptyHostname() {
     thrown.expect(IllegalArgumentException.class);
-    AdServer adServer = new AdServer(Method.SSL, "", 1234, "principal", "pw");
+    AdServer adServer = new AdServer(Method.SSL, "", 1234, "principal", "pw",
+        "90000");
   }
 
   @Test
   public void testNPEOnNullPrincipal() {
     thrown.expect(NullPointerException.class);
-    AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, null, "pw");
+    AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, null, "pw",
+        "90000");
   }
 
   @Test
   public void testIAEOnEmptyPrincipal() throws Exception {
     thrown.expect(IllegalArgumentException.class);
-    AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "", "pw");
+    AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "", "pw",
+        "90000");
   }
 
   @Test
   public void testNPEOnNullPassword() {
     thrown.expect(NullPointerException.class);
-    AdServer adServer = new AdServer(Method.SSL, "host", 1234, "princ", null);
+    AdServer adServer = new AdServer(Method.SSL, "host", 1234, "princ", null,
+        "90000");
   }
 
   @Test
   public void testIAEOnEmptyPassword() {
     thrown.expect(IllegalArgumentException.class);
-    AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "princ", "");
+    AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "princ", "",
+        "90000");
+  }
+
+  @Test
+  public void testIAEOnBogusTimeout() {
+    thrown.expect(IllegalArgumentException.class);
+    AdServer adServer = new AdServer(Method.SSL, "", 1234, "principal", "pw",
+        "bogusTimeout");
   }
 
   @Test
   public void testPublicSSLConstructor() {
     thrown.expect(AssertionError.class);
-    AdServer adServer = new AdServer(Method.SSL, "localhost", 389, " ", " ");
+    AdServer adServer = new AdServer(Method.SSL, "localhost", 389, " ", " ",
+        "90000");
   }
 
   @Test
   public void testPublicStandardConstructor() {
     thrown.expect(AssertionError.class);
     AdServer adServer =
-        new AdServer(Method.STANDARD, "localhost", 389, " ", " ");
+        new AdServer(Method.STANDARD, "localhost", 389, " ", " ", "90000");
   }
 
   @Test
@@ -174,6 +189,44 @@ public class AdServerTest {
     };
     addStandardKeysAndResults(ldapContext);
     ldapContext.addSearchResult("dn=empty", "attr1", "basedn", "val1");
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+  }
+
+  @Test
+  public void testEnsureOnetimeException() throws Exception {
+    MockLdapContext ldapContext = new MockLdapContext() {
+      boolean firstTime = true;
+      @Override
+      public Attributes getAttributes(String name) throws NamingException {
+        if (firstTime) {
+          firstTime = false;
+          throw new CommunicationException("testing");
+        } else {
+          return super.getAttributes(name);
+        }
+      }
+    };
+    addStandardKeysAndResults(ldapContext);
+    AdServer adServer = new AdServer("localhost", ldapContext) {
+      @Override
+      void recreateLdapContext() {
+        // do nothing
+      }
+    };
+    adServer.initialize();
+  }
+
+  @Test
+  public void testEnsureConnectionTimesOut() throws Exception {
+    thrown.expect(RuntimeException.class);
+    MockLdapContext ldapContext = new MockLdapContext() {
+      @Override
+      public Attributes getAttributes(String name) throws NamingException {
+        throw new NamingException("read timed out");
+      }
+    };
+    addStandardKeysAndResults(ldapContext);
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
   }

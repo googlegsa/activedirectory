@@ -62,15 +62,17 @@ public class AdServer {
   private long highestCommittedUSN;
   private String invocationID;
   private String dnsRoot;
+  private String ldapTimeoutInMillis;
 
   public AdServer(Method connectMethod, String hostName,
-      int port, String principal, String password) {
+      int port, String principal, String password, String ldapTimeoutInMillis) {
     this(hostName, createLdapContext(connectMethod, hostName, port,
-        principal, password));
+        principal, password, ldapTimeoutInMillis));
     this.connectMethod = connectMethod;
     this.port = port;
     this.principal = principal;
     this.password = password;
+    this.ldapTimeoutInMillis = ldapTimeoutInMillis;
   }
 
   @VisibleForTesting
@@ -85,7 +87,8 @@ public class AdServer {
    * Called (only) by public constructor
    */
   private static LdapContext createLdapContext(Method connectMethod,
-      String hostName, int port, String principal, String password) {
+      String hostName, int port, String principal, String password,
+      String ldapTimeoutInMillis) {
     Hashtable<String, String> env = new Hashtable<String, String>();
     if (null == connectMethod || null == hostName
         || null == principal || null == password) {
@@ -106,8 +109,7 @@ public class AdServer {
         "com.sun.jndi.ldap.LdapCtxFactory");
     // Connecting to configuration naming context is very slow for crawl users
     // in large multidomain environment, which belong to thousands of groups
-    // TODO(pjo or myk): make this configurable
-    env.put("com.sun.jndi.ldap.read.timeout", "90000");
+    env.put("com.sun.jndi.ldap.read.timeout", ldapTimeoutInMillis);
     env.put(Context.SECURITY_AUTHENTICATION, "simple");
     env.put(Context.SECURITY_PRINCIPAL, principal);
     env.put(Context.SECURITY_CREDENTIALS, password);
@@ -125,7 +127,7 @@ public class AdServer {
   @VisibleForTesting
   void recreateLdapContext() {
     ldapContext = createLdapContext(connectMethod, hostName, port, principal,
-        password);
+        password, ldapTimeoutInMillis);
   }
 
   /**
@@ -146,6 +148,15 @@ public class AdServer {
           "Reconnecting to AdServer after detecting issue", ce);
       recreateLdapContext();
       attributes = ldapContext.getAttributes("");
+    } catch (NamingException ne) {
+      if (ne.getMessage() != null
+          && ne.getMessage().contains("read timed out")) {
+        LOGGER.log(Level.WARNING, "Read timeout insufficient", ne);
+        LOGGER.log(Level.WARNING, "Consider increasing the value of "
+            + "``ad.ldapReadTimeoutSeconds'' in the config file.");
+      }
+      // rethrow the exception, whether or not we were able to give advice.
+      throw(ne);
     }
     dn = attributes.get("defaultNamingContext").get(0).toString();
     dsServiceName = attributes.get("dsServiceName").get(0).toString();

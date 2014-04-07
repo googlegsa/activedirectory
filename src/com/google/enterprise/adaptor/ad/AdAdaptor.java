@@ -65,6 +65,7 @@ public class AdAdaptor extends AbstractAdaptor
   private Map<String, String> localizedStrings;
   private boolean feedBuiltinGroups;
   private GroupCatalog lastCompleteGroupCatalog = null;
+  private String ldapTimeoutInMillis;
 
   @Override
   public void initConfig(Config config) {
@@ -78,6 +79,7 @@ public class AdAdaptor extends AbstractAdaptor
     config.addKey("ad.localized.AuthenticatedUsers", "Authenticated Users");
     config.addKey("ad.localized.Builtin", "BUILTIN");
     config.addKey("ad.feedBuiltinGroups", "false");
+    config.addKey("ad.ldapReadTimeoutSecs", "90");
   }
 
   @Override
@@ -90,6 +92,8 @@ public class AdAdaptor extends AbstractAdaptor
         config.getValue("ad.defaultPassword"));
     feedBuiltinGroups = Boolean.parseBoolean(
         config.getValue("ad.feedBuiltinGroups"));
+    ldapTimeoutInMillis = parseLdapTimeoutInMillis(
+        config.getValue("ad.ldapReadTimeoutSecs"));
     // register for incremental pushes
     context.setPollingIncrementalLister(this);
     List<Map<String, String>> serverConfigs
@@ -126,7 +130,8 @@ public class AdAdaptor extends AbstractAdaptor
         throw new IllegalStateException("password not specified for host "
             + host);
       }
-      AdServer adServer = newAdServer(method, host, port, principal, passwd);
+      AdServer adServer = newAdServer(method, host, port, principal, passwd,
+          ldapTimeoutInMillis);
       adServer.initialize();
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
@@ -142,8 +147,22 @@ public class AdAdaptor extends AbstractAdaptor
    */
   @VisibleForTesting
   AdServer newAdServer(Method method, String host, int port,
-      String principal, String passwd) {
-    return new AdServer(method, host, port, principal, passwd);
+      String principal, String passwd, String ldapTimeoutInMillis) {
+    return new AdServer(method, host, port, principal, passwd,
+        ldapTimeoutInMillis);
+  }
+
+  private static String parseLdapTimeoutInMillis(String timeInSeconds) {
+    if (timeInSeconds.equals("0") || timeInSeconds.trim().equals("")) {
+      timeInSeconds = "90";
+      log.log(Level.CONFIG, "ad.ldapReadTimeoutSecs set to default of 90 sec.");
+    }
+    try {
+      return String.valueOf(1000L * Integer.parseInt(timeInSeconds));
+    } catch (NumberFormatException e) {
+      throw new IllegalArgumentException("invalid ad.ldapReadTimeoutSecs: " +
+          timeInSeconds);
+    }
   }
 
   /** This adaptor does not serve documents. */

@@ -756,6 +756,32 @@ public class AdAdaptorTest {
     configEntries.put("ad.servers.server2.method", "standard");
     configEntries.put("ad.defaultUser", "defaultUser");
     configEntries.put("ad.defaultPassword", "password");
+    configEntries.put("ad.ldapReadTimeoutSecs", "");
+    configEntries.put("server.port", "5680");
+    configEntries.put("server.dashboardPort", "5681");
+    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true);
+    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    // the above (eventually) calls AdAdaptor.init() with the specified config.
+  }
+
+  @Test
+  public void testFakeAdaptorInitZeroTimeout() throws Exception {
+    AdAdaptor adAdaptor = new FakeAdaptor();
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    Map<String, String> configEntries = new HashMap<String, String>();
+    configEntries.put("gsa.hostname", "localhost");
+    configEntries.put("ad.servers", "server1,server2");
+    configEntries.put("ad.servers.server1.host", "localhost");
+    configEntries.put("ad.servers.server1.port", "1234");
+    configEntries.put("ad.servers.server1.user", "user-override");
+    configEntries.put("ad.servers.server1.method", "ssl");
+    configEntries.put("ad.servers.server2.host", "localhost");
+    configEntries.put("ad.servers.server2.port", "1234");
+    configEntries.put("ad.servers.server2.password", "password-override");
+    configEntries.put("ad.servers.server2.method", "standard");
+    configEntries.put("ad.defaultUser", "defaultUser");
+    configEntries.put("ad.defaultPassword", "password");
+    configEntries.put("ad.ldapReadTimeoutSecs", "0");
     configEntries.put("server.port", "5680");
     configEntries.put("server.dashboardPort", "5681");
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true);
@@ -824,6 +850,27 @@ public class AdAdaptorTest {
   }
 
   @Test
+  public void testFakeAdaptorInitBadTimeout() throws Exception {
+    AdAdaptor adAdaptor = new FakeAdaptor();
+    Map<String, String> configEntries = new HashMap<String, String>();
+    configEntries.put("gsa.hostname", "localhost");
+    configEntries.put("ad.servers", "server1");
+    configEntries.put("ad.servers.server1.host", "localhost");
+    configEntries.put("ad.servers.server1.port", "1234");
+    configEntries.put("ad.defaultUser", "defaultUser");
+    configEntries.put("ad.defaultPassword", "password");
+    configEntries.put("ad.ldapReadTimeoutSecs", "bogus");
+    configEntries.put("server.port", "5680");
+    configEntries.put("server.dashboardPort", "5681");
+    try {
+      initializeAdaptorConfig(adAdaptor, configEntries);
+      fail("Did not catch expected exception");
+    } catch (IllegalArgumentException iae) {
+      assertTrue(iae.toString().contains("invalid ad.ldapReadTimeoutSecs"));
+    }
+  }
+
+  @Test
   public void testFakeAdaptorGetDocIds() throws Exception {
     AdAdaptor adAdaptor = new FakeAdaptor();
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -864,7 +911,7 @@ public class AdAdaptorTest {
           + "(&(objectClass=user)(objectCategory=person)))";
       @Override
       AdServer newAdServer(Method method, String host, int port,
-          String principal, String passwd) {
+          String principal, String passwd, String ldapTimeoutInMillis) {
         MockLdapContext ldapContext = null;
         try {
           ldapContext = mockLdapContextForMakeDefs(false);
@@ -1150,7 +1197,7 @@ public class AdAdaptorTest {
   public class FakeAdaptor extends AdAdaptor {
     @Override
     AdServer newAdServer(Method method, String host, int port,
-        String principal, String passwd) {
+        String principal, String passwd, String ldapTimeoutInMillis) {
       MockLdapContext ldapContext = null;
       try {
         ldapContext = mockLdapContextForMakeDefs(false);
