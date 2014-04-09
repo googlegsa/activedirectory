@@ -95,14 +95,14 @@ public class AdServerTest {
 
   @Test
   public void testPublicSSLConstructor() {
-    thrown.expect(AssertionError.class);
+    thrown.expect(RuntimeException.class);
     AdServer adServer = new AdServer(Method.SSL, "localhost", 389, " ", " ",
         "90000");
   }
 
   @Test
   public void testPublicStandardConstructor() {
-    thrown.expect(AssertionError.class);
+    thrown.expect(RuntimeException.class);
     AdServer adServer =
         new AdServer(Method.STANDARD, "localhost", 389, " ", " ", "90000");
   }

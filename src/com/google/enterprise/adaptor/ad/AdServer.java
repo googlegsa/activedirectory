@@ -17,12 +17,14 @@ package com.google.enterprise.adaptor.ad;
 import com.google.common.annotations.VisibleForTesting;
 
 import java.io.IOException;
+import java.net.ConnectException;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.naming.AuthenticationException;
 import javax.naming.CommunicationException;
 import javax.naming.Context;
 import javax.naming.InterruptedNamingException;
@@ -84,7 +86,7 @@ public class AdServer {
   }
 
   /**
-   * Called (only) by public constructor
+   * Normally called (only) by public constructor
    */
   private static LdapContext createLdapContext(Method connectMethod,
       String hostName, int port, String principal, String password,
@@ -105,6 +107,8 @@ public class AdServer {
     }
 
     // Use the built-in LDAP support.
+    // TODO(myk): See if we can specify a value in the configuration file to
+    // allow us to override this, for unit tests.
     env.put(Context.INITIAL_CONTEXT_FACTORY,
         "com.sun.jndi.ldap.LdapCtxFactory");
     // Connecting to configuration naming context is very slow for crawl users
@@ -120,7 +124,33 @@ public class AdServer {
     try {
       return new InitialLdapContext(env, null);
     } catch (NamingException ne) {
-      throw new AssertionError(ne);
+      // display (throw) a "nicer" exception message when we cannot connect.
+      // This can be an AuthenticationException (wrong user name or password) or
+      // a ConnectException (wrong hostname).
+      Throwable cause = ne.getCause();
+      boolean replaceException = false;
+      if (cause instanceof ConnectException) {
+        ConnectException ce = (ConnectException) cause;
+        if (ce.getMessage() != null
+            && (ce.getMessage().contains("Connection timed out")
+                || ce.getMessage().contains("Connection refused"))) {
+          replaceException = true;
+        }
+      } else if (ne instanceof AuthenticationException) {
+        replaceException = true;
+      } else if (ne instanceof CommunicationException) {
+        replaceException = true;
+      }
+      if (replaceException) {
+        String warning = String.format("Cannot connect to server \"%s\" as "
+            + "user \"%s\" with the specified password.  Please make sure "
+            + "they are specified correctly.  If the AD server is currently "
+            + "down, please try again later.", hostName, principal);
+        throw new RuntimeException(warning, ne);
+      }
+      // wasn't the specific error we're looking for -- rethrow it.
+      // <code>RuntimeException</code> is caught by the library, and retried.
+      throw new RuntimeException(ne);
     }
   }
 
