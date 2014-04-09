@@ -122,10 +122,11 @@ public class AdAdaptor extends AbstractAdaptor
       if (principal.isEmpty()) {
         throw new IllegalStateException("user not specified for host " + host);
       }
-      String passwd = context.getSensitiveValueDecoder().decodeValue(
-          singleServerConfig.get("password"));
+      String passwd = singleServerConfig.get("password");
       if (null == passwd) {
         passwd = defaultPassword;
+      } else {
+        passwd = context.getSensitiveValueDecoder().decodeValue(passwd);
       }
       if (passwd.isEmpty()) {
         throw new IllegalStateException("password not specified for host "
