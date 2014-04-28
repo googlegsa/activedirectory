@@ -70,14 +70,28 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-ad-YYYYMMDD-withlib.jar</pre>
 </ol>
 
-<!--
-<h4>Running as service on Windows</h4>
- <p>Example execution with jsvc:
- <pre>jsvc -pidfile adaptor.pid -cp adaptor-ad-YYYYMMDD-withlib.jar com.google.enterprise.adaptor.Daemon com.google.enterprise.adaptor.ad.AdAdaptor</pre>
--->
+<h4>Running as a service</h4>
+  <p>Example service creation on Windows with prunsrv:
+  <pre>prunsrv install adaptor-ad --StartPath="%CD%" ^
+  --Classpath=adaptor-ad-YYYYMMDD-withlib.jar ^
+  --StartMode=jvm --StartClass=com.google.enterprise.adaptor.Daemon ^
+  --StartMethod=serviceStart --StartParams=com.google.enterprise.adaptor.ad.AdAdaptor
+  --StopMode=jvm --StopClass=com.google.enterprise.adaptor.Daemon ^
+  --StopMethod=serviceStop --StdOutput=stdout.log --StdError=stderr.log ^
+  ++JvmOptions=-Djava.util.logging.config.file=logging.properties</pre>
+
+  <p>Example execution on Linux with jsvc:
+  <pre>jsvc -pidfile adaptor.pid -cp adaptor-ad-YYYYMMDD-withlib.jar com.google.enterprise.adaptor.Daemon com.google.enterprise.adaptor.ad.AdAdaptor</pre>
 
 <h4>Optional <code>adaptor-config.properties</code> fields</h4>
 <dl>
+
+  <dt>
+  <code>server.dashboardPort</code>
+  </dt>
+  <dd>
+  Port on which to view web page showing information and diagnostics. Defaults to "5679".
+  </dd>
 
   <dt>
   <code>ad.localized.Everyone</code>
