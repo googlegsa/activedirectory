@@ -27,6 +27,7 @@ import com.google.enterprise.adaptor.Adaptor;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.Response;
 import com.google.enterprise.adaptor.TestHelper;
@@ -854,7 +855,7 @@ public class AdAdaptorTest {
     try {
       initializeAdaptorConfig(adAdaptor, configEntries);
       fail("Did not catch expected exception");
-    } catch (IllegalStateException e) {
+    } catch (InvalidConfigurationException e) {
       assertTrue(e.toString().contains("user not specified"));
     }
   }
@@ -874,7 +875,7 @@ public class AdAdaptorTest {
     try {
       initializeAdaptorConfig(adAdaptor, configEntries);
       fail("Did not catch expected exception");
-    } catch (IllegalStateException e) {
+    } catch (InvalidConfigurationException e) {
       assertTrue(e.toString().contains("password not specified"));
     }
   }
@@ -895,8 +896,8 @@ public class AdAdaptorTest {
     try {
       initializeAdaptorConfig(adAdaptor, configEntries);
       fail("Did not catch expected exception");
-    } catch (IllegalArgumentException iae) {
-      assertTrue(iae.toString().contains("invalid method: https"));
+    } catch (InvalidConfigurationException ice) {
+      assertTrue(ice.toString().contains("invalid method: https"));
     }
   }
 
@@ -916,8 +917,9 @@ public class AdAdaptorTest {
     try {
       initializeAdaptorConfig(adAdaptor, configEntries);
       fail("Did not catch expected exception");
-    } catch (IllegalArgumentException iae) {
-      assertTrue(iae.toString().contains("invalid ad.ldapReadTimeoutSecs"));
+    } catch (InvalidConfigurationException ice) {
+      assertTrue(ice.toString().contains(
+          "invalid value for ad.ldapReadTimeoutSecs"));
     }
   }
 

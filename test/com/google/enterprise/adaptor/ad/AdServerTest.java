@@ -38,28 +38,28 @@ public class AdServerTest {
   }
 
   @Test
-  public void testNPEOnNullConnectMethod() {
+  public void testNPEOnNullConnectMethod() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(null, "hostname", 1234, "principal", "pw",
         "90000");
   }
 
   @Test
-  public void testNPEOnNullHostname() {
+  public void testNPEOnNullHostname() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(Method.SSL, null, 1234, "principal", "pw",
         "90000");
   }
 
   @Test
-  public void testIAEOnEmptyHostname() {
+  public void testIAEOnEmptyHostname() throws Exception {
     thrown.expect(IllegalArgumentException.class);
     AdServer adServer = new AdServer(Method.SSL, "", 1234, "principal", "pw",
         "90000");
   }
 
   @Test
-  public void testNPEOnNullPrincipal() {
+  public void testNPEOnNullPrincipal() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, null, "pw",
         "90000");
@@ -73,35 +73,35 @@ public class AdServerTest {
   }
 
   @Test
-  public void testNPEOnNullPassword() {
+  public void testNPEOnNullPassword() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(Method.SSL, "host", 1234, "princ", null,
         "90000");
   }
 
   @Test
-  public void testIAEOnEmptyPassword() {
+  public void testIAEOnEmptyPassword() throws Exception {
     thrown.expect(IllegalArgumentException.class);
     AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "princ", "",
         "90000");
   }
 
   @Test
-  public void testIAEOnBogusTimeout() {
+  public void testIAEOnBogusTimeout() throws Exception {
     thrown.expect(IllegalArgumentException.class);
     AdServer adServer = new AdServer(Method.SSL, "", 1234, "principal", "pw",
         "bogusTimeout");
   }
 
   @Test
-  public void testPublicSSLConstructor() {
+  public void testPublicSSLConstructor() throws Exception {
     thrown.expect(RuntimeException.class);
     AdServer adServer = new AdServer(Method.SSL, "localhost", 389, " ", " ",
         "90000");
   }
 
   @Test
-  public void testPublicStandardConstructor() {
+  public void testPublicStandardConstructor() throws Exception {
     thrown.expect(RuntimeException.class);
     AdServer adServer =
         new AdServer(Method.STANDARD, "localhost", 389, " ", " ", "90000");

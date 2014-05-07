@@ -20,10 +20,12 @@ import com.google.enterprise.adaptor.AdaptorContext;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
+import com.google.enterprise.adaptor.StartupException;
 import com.google.enterprise.adaptor.UserPrincipal;
 
 import java.io.IOException;
@@ -112,7 +114,8 @@ public class AdAdaptor extends AbstractAdaptor
         if ("ssl".equals(methodStr)) {
           method = Method.SSL;
         } else if (!"standard".equals(methodStr)) {
-          throw new IllegalArgumentException("invalid method: " + methodStr);
+          throw new InvalidConfigurationException("invalid method: "
+              + methodStr);
         }
       }
       String principal = singleServerConfig.get("user");
@@ -120,7 +123,8 @@ public class AdAdaptor extends AbstractAdaptor
         principal = defaultUser;
       }
       if (principal.isEmpty()) {
-        throw new IllegalStateException("user not specified for host " + host);
+        throw new InvalidConfigurationException("user not specified for host "
+              + host);
       }
       String passwd = singleServerConfig.get("password");
       if (null == passwd) {
@@ -129,8 +133,8 @@ public class AdAdaptor extends AbstractAdaptor
         passwd = context.getSensitiveValueDecoder().decodeValue(passwd);
       }
       if (passwd.isEmpty()) {
-        throw new IllegalStateException("password not specified for host "
-            + host);
+        throw new InvalidConfigurationException("password not specified for "
+            + "host " + host);
       }
       AdServer adServer = newAdServer(method, host, port, principal, passwd,
           ldapTimeoutInMillis);
@@ -149,12 +153,14 @@ public class AdAdaptor extends AbstractAdaptor
    */
   @VisibleForTesting
   AdServer newAdServer(Method method, String host, int port,
-      String principal, String passwd, String ldapTimeoutInMillis) {
+      String principal, String passwd, String ldapTimeoutInMillis)
+      throws StartupException {
     return new AdServer(method, host, port, principal, passwd,
         ldapTimeoutInMillis);
   }
 
-  private static String parseLdapTimeoutInMillis(String timeInSeconds) {
+  private static String parseLdapTimeoutInMillis(String timeInSeconds)
+      throws InvalidConfigurationException {
     if (timeInSeconds.equals("0") || timeInSeconds.trim().equals("")) {
       timeInSeconds = "90";
       log.log(Level.CONFIG, "ad.ldapReadTimeoutSecs set to default of 90 sec.");
@@ -162,8 +168,8 @@ public class AdAdaptor extends AbstractAdaptor
     try {
       return String.valueOf(1000L * Integer.parseInt(timeInSeconds));
     } catch (NumberFormatException e) {
-      throw new IllegalArgumentException("invalid ad.ldapReadTimeoutSecs: " +
-          timeInSeconds);
+      throw new InvalidConfigurationException("invalid value for "
+          + "ad.ldapReadTimeoutSecs: " + timeInSeconds);
     }
   }
 

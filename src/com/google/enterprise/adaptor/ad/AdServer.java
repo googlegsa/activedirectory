@@ -16,6 +16,8 @@ package com.google.enterprise.adaptor.ad;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import com.google.enterprise.adaptor.StartupException;
+
 import java.io.IOException;
 import java.net.ConnectException;
 import java.util.HashSet;
@@ -67,7 +69,8 @@ public class AdServer {
   private String ldapTimeoutInMillis;
 
   public AdServer(Method connectMethod, String hostName,
-      int port, String principal, String password, String ldapTimeoutInMillis) {
+      int port, String principal, String password, String ldapTimeoutInMillis)
+      throws StartupException {
     this(hostName, createLdapContext(connectMethod, hostName, port,
         principal, password, ldapTimeoutInMillis));
     this.connectMethod = connectMethod;
@@ -90,7 +93,7 @@ public class AdServer {
    */
   private static LdapContext createLdapContext(Method connectMethod,
       String hostName, int port, String principal, String password,
-      String ldapTimeoutInMillis) {
+      String ldapTimeoutInMillis) throws StartupException {
     Hashtable<String, String> env = new Hashtable<String, String>();
     if (null == connectMethod || null == hostName
         || null == principal || null == password) {
@@ -129,6 +132,7 @@ public class AdServer {
       // a ConnectException (wrong hostname).
       Throwable cause = ne.getCause();
       boolean replaceException = false;
+      boolean abortStartup = false;
       if (cause instanceof ConnectException) {
         ConnectException ce = (ConnectException) cause;
         if (ce.getMessage() != null
@@ -137,7 +141,9 @@ public class AdServer {
           replaceException = true;
         }
       } else if (ne instanceof AuthenticationException) {
+        // this is the only exception we flag as a StartupException.
         replaceException = true;
+        abortStartup = true;
       } else if (ne instanceof CommunicationException) {
         replaceException = true;
       }
@@ -146,7 +152,11 @@ public class AdServer {
             + "user \"%s\" with the specified password.  Please make sure "
             + "they are specified correctly.  If the AD server is currently "
             + "down, please try again later.", hostName, principal);
-        throw new RuntimeException(warning, ne);
+        if (abortStartup) {
+          throw new StartupException(warning, ne);
+        } else {
+          throw new RuntimeException(warning, ne);
+        }
       }
       // wasn't the specific error we're looking for -- rethrow it.
       // <code>RuntimeException</code> is caught by the library, and retried.
@@ -155,7 +165,7 @@ public class AdServer {
   }
 
   @VisibleForTesting
-  void recreateLdapContext() {
+  void recreateLdapContext() throws StartupException {
     ldapContext = createLdapContext(connectMethod, hostName, port, principal,
         password, ldapTimeoutInMillis);
   }
@@ -176,7 +186,14 @@ public class AdServer {
     } catch (CommunicationException ce) {
       LOGGER.log(Level.FINER,
           "Reconnecting to AdServer after detecting issue", ce);
-      recreateLdapContext();
+      try {
+        recreateLdapContext();
+      } catch (StartupException se) {
+        // authentication issues
+        NamingException ne = new NamingException("recreateLdapContext problem");
+        ne.setRootCause(se);
+        throw ne;
+      }
       attributes = ldapContext.getAttributes("");
     } catch (NamingException ne) {
       if (ne.getMessage() != null
