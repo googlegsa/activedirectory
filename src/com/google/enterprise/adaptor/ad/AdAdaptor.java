@@ -525,6 +525,7 @@ public class AdAdaptor extends AbstractAdaptor
     private void resolvePrimaryGroups(Set<AdEntity> entities) {
       int nadds = 0;
       int missingGroups = 0;
+      Set<AdEntity> additionalGroupsToPush = new HashSet<AdEntity>();
       for (AdEntity e : entities) {
         if (e.isGroup()) {
           continue;
@@ -543,7 +544,16 @@ public class AdAdaptor extends AbstractAdaptor
         }
         members.get(primaryGroup).add(user.getDn());
         wellKnownMembership.get(everyone).add(user.getDn());
+        // add the primary and "everyone" groups to the list of modified entries
+        // this is a no-op for a full crawl, but is needed for incremental crawl
+        // (and this routine does not know which type of crawl is being run).
+        additionalGroupsToPush.add(primaryGroup);
+        // "everyone" group added below, at most once
         nadds++;
+      }
+      if (!additionalGroupsToPush.isEmpty()) {
+        entities.addAll(additionalGroupsToPush);
+        entities.add(everyone);
       }
       log.log(Level.FINE, "# primary groups: {0}", members.keySet().size());
       if (missingGroups > 0) {

@@ -268,6 +268,7 @@ public class AdAdaptorTest {
                .addSearchResult(filter, "sAMAccountName", searchDn, "sam");
 
     AdEntity userGroup = new AdEntity("S-1-5-32-users", "users");
+    AdEntity everyone = new AdEntity("S-1-1-0", "CN=everyone");
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
 
@@ -289,13 +290,12 @@ public class AdAdaptorTest {
 
     final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
       defaultLocalizedStringMap(), "example.com", /*feedBuiltinGroups=*/ true,
-      /*entities*/ Sets.newHashSet(goldenEntity),
+      /*entities*/ Sets.newHashSet(goldenEntity, userGroup, everyone),
       /*members*/ goldenMembers,
       /*bySid*/ goldenSid,
       /*byDn*/ goldenDn,
       /*domain*/ goldenDomain);
     golden.wellKnownMembership.get(golden.everyone).add(goldenEntity.getDn());
-
     assertTrue(golden.equals(groupCatalog));
 
     // make sure readEverythingFrom call is idempotent
