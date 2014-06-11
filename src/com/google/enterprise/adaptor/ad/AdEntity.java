@@ -308,7 +308,7 @@ public class AdEntity {
     int end = dn.indexOf(',');
     String sid = dn.substring(start + 1, end);
     // check for mangled or malformed security principal format
-    if (!sid.matches("^S-1-5-21(-[0-9]+)+$")) {
+    if (!sid.matches("^S-1-[15](-[0-9]+)+$")) {
       log.fine("invalid foreign security principal [" + dn + "].");
       return null;
     }
