@@ -16,6 +16,7 @@ package com.google.enterprise.adaptor.ad;
 
 import com.google.common.annotations.VisibleForTesting;
 
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.StartupException;
 
 import java.io.IOException;
@@ -53,7 +54,8 @@ public class AdServer {
   // properties necessary for connection and reconnection
   private Method connectMethod;
   private final String hostName;
-  private int port;
+  @VisibleForTesting
+  int port;
   private String principal;
   private String password;
 
@@ -213,7 +215,7 @@ public class AdServer {
         "configurationNamingContext").get(0).toString();
   }
 
-  public void initialize() {
+  public void initialize() throws InvalidConfigurationException {
     try {
       ensureConnectionIsCurrent();
       sid = AdEntity.getTextSid((byte[]) get(
@@ -223,6 +225,15 @@ public class AdServer {
           "invocationID;binary", dsServiceName));
     } catch (NamingException e) {
       throw new RuntimeException(e);
+    } catch (NullPointerException npe) {
+      String reason = "non-AD LDAP server detected.  AD Adaptor must be run "
+          + "against an Active Directory domain controller.";
+      if ((port == 3268) || (port == 3269)) {
+        reason = "AD Adaptor must be run against the Domain Controller "
+            + "(typically, port 389 for HTTP or port 636 for SSL), not the "
+            + "Global Catalog.";
+      }
+      throw new InvalidConfigurationException(reason);
     }
 
     LOGGER.info("Successfully created an Initial LDAP context");

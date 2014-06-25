@@ -20,6 +20,9 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
+import com.google.enterprise.adaptor.InvalidConfigurationException;
+import com.google.enterprise.adaptor.StartupException;
+
 import javax.naming.*;
 import javax.naming.directory.*;
 import javax.naming.ldap.*;
@@ -128,6 +131,66 @@ public class AdServerTest {
     assertNull(adServer.get("dn=ds_service_name", "null", "null"));
     assertEquals("val1", adServer.get("dn=empty", "attr1", "basedn"));
     assertNull(adServer.get("dn=empty", "attr2", "basedn"));
+  }
+
+  @Test
+  public void testNonADInitialize() throws Exception {
+    MockLdapContext ldapContext = new MockLdapContext() {
+      @Override
+      public NamingEnumeration<SearchResult> search(String base, String filter,
+        SearchControls searchControls) throws NamingException {
+          throw new NullPointerException("non-AD server");
+      }
+    };
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    try {
+      adServer.initialize();
+      fail("Did not catch expected InvalidConfigurationException.");
+    } catch (InvalidConfigurationException ice) {
+      assertTrue(ice.toString().contains("non-AD LDAP"));
+    }
+  }
+
+  @Test
+  // this test uses port 3268 -- the Global Catalog port -- to get a
+  // specific exception thrown.
+  public void testGlobalCatalogInitialize() throws Exception {
+    final MockLdapContext ldapContext = new MockLdapContext() {
+      @Override
+      public NamingEnumeration<SearchResult> search(String base, String filter,
+        SearchControls searchControls) throws NamingException {
+          throw new NullPointerException("non-AD server");
+      }
+    };
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    try {
+      adServer.port = 3268;
+      adServer.initialize();
+      fail("Did not catch expected InvalidConfigurationException.");
+    } catch (InvalidConfigurationException ice) {
+      assertTrue(ice.toString().contains("not the Global Catalog"));
+    }
+  }
+
+  @Test
+  // this test uses port 3269 -- the SSL Global Catalog port -- to get the
+  // same specific exception thrown.
+  public void testSSLGlobalCatalogInitialize() throws Exception {
+    final MockLdapContext ldapContext = new MockLdapContext() {
+      @Override
+      public NamingEnumeration<SearchResult> search(String base, String filter,
+        SearchControls searchControls) throws NamingException {
+          throw new NullPointerException("non-AD server");
+      }
+    };
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    try {
+      adServer.port = 3269;
+      adServer.initialize();
+      fail("Did not catch expected InvalidConfigurationException.");
+    } catch (InvalidConfigurationException ice) {
+      assertTrue(ice.toString().contains("not the Global Catalog"));
+    }
   }
 
   @Test
