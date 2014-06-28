@@ -142,6 +142,52 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   Namespace to use on ACLs sent to GSA.  Defaults to "Default".
   </dd>
 
+
+  <dt>
+  <code>server.port</code>
+  </dt>
+  <dd>
+  Port for any crawlable documents this adaptor serves.  
+  Each instance of an adaptor on same machine requires a unique port.
+  Defaults to 5678.
+  </dd>
+
+  <dt>
+  <code>adaptor.fullListingSchedule</code>
+  </dt>
+  <dd>
+  Schedule for pushing all group definitions.  Defaults to "0 3 * * *" which is 3AM.
+  </dd>
+
+  <dt>
+  <code>adaptor.incrementalPollPeriodSecs</code>
+  </dt>
+  <dd>
+  Schedule for getting recent updates.  Defaults to 900 seconds which is 15 minutes.
+  </dd>
+
+  <dt>
+  <code>adaptor.pushDocIdsOnStartup</code>
+  </dt>
+  <dd>
+  Whether to push all group definitions on startup, in addition to full listing
+  schedule.  Defaults to true.
+  </dd>
+
+  <dt>
+  <code>feed.maxUrls</code>
+  </dt>
+  <dd>
+  Number of groups to define per communication with GSA. Defaults to 5000.
+  </dd>
+
+  <dt>
+  <code>server.hostname</code>
+  </dt>
+  <dd>
+  Optionally the hostname of the server running adaptor, in case automatic
+  detection fails.  Defaults to name of localhost.
+  </dd>
 </dl>
 
 </body>
