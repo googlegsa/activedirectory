@@ -16,18 +16,17 @@ package com.google.enterprise.adaptor.ad;
 
 import static org.junit.Assert.*;
 
+import com.google.enterprise.adaptor.InvalidConfigurationException;
+
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-import com.google.enterprise.adaptor.InvalidConfigurationException;
-import com.google.enterprise.adaptor.StartupException;
+import java.util.*;
 
 import javax.naming.*;
 import javax.naming.directory.*;
 import javax.naming.ldap.*;
-
-import java.util.*;
 
 /** Test cases for {@link AdServer}. */
 public class AdServerTest {
@@ -307,7 +306,49 @@ public class AdServerTest {
                    hexStringToByteArray("000102030405060708090a0b0c"));
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, false,
+    Set<AdEntity> resultSet = adServer.search("", filter, false,
+        new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
+    assertEquals(1, resultSet.size());
+    for (AdEntity ae : resultSet) {
+      assertEquals("name under", ae.getCommonName());
+    }
+  }
+
+  @Test
+  public void testSearchWithNullBaseDnReturnsOneUser() throws Exception {
+    MockLdapContext ldapContext = new MockLdapContext();
+    addStandardKeysAndResults(ldapContext);
+    // populate additional attributes with values we can test
+    final String filter = "ou=Users";
+    final String userDn = "DN_for_default_naming_context";
+    ldapContext.addSearchResult(filter, "cn", userDn, "user1")
+               .addSearchResult(filter, "primaryGroupId", userDn, "users")
+               .addSearchResult(filter, "objectGUID;binary", userDn,
+                   hexStringToByteArray("000102030405060708090a0b0c"));
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    Set<AdEntity> resultSet = adServer.search(null, filter, false,
+        new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
+    assertEquals(1, resultSet.size());
+    for (AdEntity ae : resultSet) {
+      assertEquals("name under", ae.getCommonName());
+    }
+  }
+
+  @Test
+  public void testSearchUnderDifferentBaseDnReturnsOneUser() throws Exception {
+    MockLdapContext ldapContext = new MockLdapContext();
+    addStandardKeysAndResults(ldapContext);
+    // populate additional attributes with values we can test
+    final String filter = "ou=Users";
+    final String userDn = "DN_for_default_naming_context";
+    ldapContext.addSearchResult(filter, "cn", userDn, "user1")
+               .addSearchResult(filter, "primaryGroupId", userDn, "users")
+               .addSearchResult(filter, "objectGUID;binary", userDn,
+                   hexStringToByteArray("000102030405060708090a0b0c"));
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    Set<AdEntity> resultSet = adServer.search(userDn, filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
     assertEquals(1, resultSet.size());
     for (AdEntity ae : resultSet) {
@@ -326,7 +367,7 @@ public class AdServerTest {
                .addSearchResult(filter, "primaryGroupId", userDn, "users");
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, false,
+    Set<AdEntity> resultSet = adServer.search("", filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
     assertEquals(0, resultSet.size());
   }
@@ -349,7 +390,7 @@ public class AdServerTest {
                .addSearchResult(filter, "primaryGroupId", userDn, "users");
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, false,
+    Set<AdEntity> resultSet = adServer.search("", filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
     assertEquals(0, resultSet.size());
   }
@@ -367,7 +408,7 @@ public class AdServerTest {
                    hexStringToByteArray("000102030405060708090a0b0c"));
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, true,
+    Set<AdEntity> resultSet = adServer.search("", filter, true,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
     assertEquals(1, resultSet.size());
     for (AdEntity ae : resultSet) {
@@ -393,7 +434,7 @@ public class AdServerTest {
                    hexStringToByteArray("000102030405060708090a0b0c"));
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, true,
+    Set<AdEntity> resultSet = adServer.search("", filter, true,
         new String[] { "cn", "members", "objectGUID;binary" });
     assertEquals(1, resultSet.size());
     for (AdEntity ae : resultSet) {
@@ -408,14 +449,25 @@ public class AdServerTest {
     // populate additional attributes with values we can test
     final String filter = "ou=Users";
     final String userDn = "DN_for_default_naming_context";
+    final String group2Dn = "cn=Cn_for_another_group";
     List<String> members = Arrays.asList("dn_for_user_1", "dn_for_user_2");
     ldapContext.addSearchResult(filter, "cn", userDn, "users")
                .addSearchResult(filter, "objectGUID;binary", userDn,
                    hexStringToByteArray("000102030405060708090a0b0c"))
-               .addSearchResult(filter, "member", userDn, members);
+               .addSearchResult(filter, "member", userDn, members)
+               .addSearchResult(filter, "objectGUID;binary", group2Dn,
+                   hexStringToByteArray("000102030405060708090a0b0d"))
+               .addSearchResult(filter, "member", group2Dn, members);
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, false,
+    Set<AdEntity> resultSet = adServer.search("", filter, false,
+        new String[] { "cn", "member", "objectGUID;binary" });
+    assertEquals(1, resultSet.size());
+    for (AdEntity ae : resultSet) {
+      assertEquals(new HashSet<String>(members), ae.getMembers());
+    }
+    // read second group under its baseDn
+    resultSet = adServer.search(group2Dn, filter, false,
         new String[] { "cn", "member", "objectGUID;binary" });
     assertEquals(1, resultSet.size());
     for (AdEntity ae : resultSet) {
@@ -446,7 +498,7 @@ public class AdServerTest {
                     moreMembers);
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, false,
+    Set<AdEntity> resultSet = adServer.search("", filter, false,
         // need the ranged members for MockLdapContext, not for "real" AD.
         new String[] { "cn", "member", "member;Range=0-1", "member;Range=2-3",
                        "objectGUID;binary", "sAMAccountName" });
@@ -484,7 +536,7 @@ public class AdServerTest {
                     evenMore);
     AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
-    Set<AdEntity> resultSet = adServer.search(filter, false,
+    Set<AdEntity> resultSet = adServer.search("", filter, false,
         // need the ranged members for MockLdapContext, not for "real" AD.
         new String[] { "cn", "member", "member;Range=0-1", "member;Range=2-3",
                        "member;Range=4-5*", "objectGUID;binary",

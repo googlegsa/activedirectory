@@ -66,27 +66,21 @@ public class AdAdaptorTest {
 
   @Test
   public void testGroupCatalogConstructor() {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ true);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
+    AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true).build();
     assertTrue(golden.equals(groupCatalog));
   }
 
   @Test
   public void testGroupCatalogEquals() {
-    Map<String, String> strings = defaultLocalizedStringMap();
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ true);
+    AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder().build();
     golden.members.put(new AdEntity("Test", "dn=Test"),
         Sets.newHashSet("Test"));
     final Map<AdEntity, Set<String>> goldenWellKnownMembership =
         golden.wellKnownMembership;
 
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     groupCatalog.members.put(new AdEntity("Test", "dn=Test"),
         Sets.newHashSet("Test"));
 
@@ -133,10 +127,7 @@ public class AdAdaptorTest {
 
   @Test
   public void testGroupCatalogReadFrom() throws Exception {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a group
     String filter = "(|(&(objectClass=group)"
@@ -173,23 +164,20 @@ public class AdAdaptorTest {
     final Map<AdEntity, String> goldenDomain = new HashMap<AdEntity, String>();
     goldenDomain.put(goldenEntity, "GSA-CONNECTORS");
 
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ true,
-      /*entities*/ Sets.newHashSet(goldenEntity),
-      /*members*/ goldenMembers,
-      /*bySid*/ goldenSid,
-      /*byDn*/ goldenDn,
-      /*domain*/ goldenDomain);
+    AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(Sets.newHashSet(goldenEntity))
+        .setMembers(goldenMembers)
+        .setBySid(goldenSid)
+        .setByDn(goldenDn)
+        .setDomain(goldenDomain).build();
 
     assertTrue(golden.equals(groupCatalog));
   }
 
   @Test
   public void testGroupCatalogReadFromReturnsDisabledGroup() throws Exception {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a disabled group
     String filter = "(|(&(objectClass=group)"
@@ -237,21 +225,20 @@ public class AdAdaptorTest {
     goldenDomain.put(interactive, "NT Authority");
     goldenDomain.put(authUsers, "NT Authority");
 
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ true,
-      /*entities*/ Sets.newHashSet(goldenEntity),
-      /*members*/ goldenMembers,
-      /*bySid*/ goldenSid,
-      /*byDn*/ goldenDn,
-      /*domain*/ goldenDomain);
+    AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(Sets.newHashSet(goldenEntity))
+        .setMembers(goldenMembers)
+        .setBySid(goldenSid)
+        .setByDn(goldenDn)
+        .setDomain(goldenDomain).build();
 
     assertTrue(golden.equals(groupCatalog));
   }
 
   @Test
   public void testGroupCatalogReadFromReturnsUser() throws Exception {
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-        defaultLocalizedStringMap(), "example", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a user
     String filter = "(|(&(objectClass=group)"
@@ -288,13 +275,13 @@ public class AdAdaptorTest {
     final Map<AdEntity, String> goldenDomain = new HashMap<AdEntity, String>();
     goldenDomain.put(goldenEntity, "BUILTIN");
 
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      defaultLocalizedStringMap(), "example.com", /*feedBuiltinGroups=*/ true,
-      /*entities*/ Sets.newHashSet(goldenEntity, userGroup, everyone),
-      /*members*/ goldenMembers,
-      /*bySid*/ goldenSid,
-      /*byDn*/ goldenDn,
-      /*domain*/ goldenDomain);
+    AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(Sets.newHashSet(goldenEntity, userGroup, everyone))
+        .setMembers(goldenMembers)
+        .setBySid(goldenSid)
+        .setByDn(goldenDn)
+        .setDomain(goldenDomain).build();
     golden.wellKnownMembership.get(golden.everyone).add(goldenEntity.getDn());
     assertTrue(golden.equals(groupCatalog));
 
@@ -306,8 +293,7 @@ public class AdAdaptorTest {
   @Test
   public void testGroupCatalogReadFromReturnsUserMissingPrimaryGroup()
       throws Exception {
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-        defaultLocalizedStringMap(), "example", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a user
     String filter = "(|(&(objectClass=group)"
@@ -339,14 +325,13 @@ public class AdAdaptorTest {
     final Map<AdEntity, String> goldenDomain = new HashMap<AdEntity, String>();
     goldenDomain.put(goldenEntity, "BUILTIN");
 
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      defaultLocalizedStringMap(), "example.com", /*feedBuiltinGroups=*/ true,
-      /*entities*/ Sets.newHashSet(goldenEntity),
-      /*members*/ goldenMembers,
-      /*bySid*/ goldenSid,
-      /*byDn*/ goldenDn,
-      /*domain*/ goldenDomain);
-
+    final AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(Sets.newHashSet(goldenEntity))
+        .setMembers(goldenMembers)
+        .setBySid(goldenSid)
+        .setByDn(goldenDn)
+        .setDomain(goldenDomain).build();
     assertTrue(golden.equals(groupCatalog));
 
     // make sure readEverythingFrom call is idempotent
@@ -355,10 +340,147 @@ public class AdAdaptorTest {
   }
 
   @Test
+  public void testLdapQueriesWithNoFiltersOrBaseDns() throws Exception {
+    final FakeAdaptor adAdaptor = new FakeAdaptor();
+    final FakeCatalog groupCatalog = new FakeCatalog(
+        defaultLocalizedStringMap(), "example.com", false, "", "", "", "");
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    final AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    final String expectedGroupQuery = "(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))";
+    assertEquals(expectedGroupQuery, groupCatalog.generateGroupLdapQuery());
+    final String expectedUserQuery = "(&(objectClass=user)"
+        + "(objectCategory=person))";
+    assertEquals(expectedUserQuery, groupCatalog.generateUserLdapQuery());
+    final String expectedQuery = "(|" + expectedGroupQuery + expectedUserQuery
+        + ")";
+    assertEquals(expectedQuery, groupCatalog.generateLdapQuery());
+
+    groupCatalog.resetCrawlFlags();
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
+
+    groupCatalog.readEverythingFrom(adServer, /*includeMembers=*/ true);
+    assertTrue(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
+
+    groupCatalog.resetCrawlFlags();
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name", "0x0123456789abc",
+        12345677L); // earlier USN than previous run: does an incremental run
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertTrue(groupCatalog.ranIncrementalCrawl());
+  }
+
+  @Test
+  public void testLdapQueriesWithFilters() throws Exception {
+    final FakeAdaptor adAdaptor = new FakeAdaptor();
+    final FakeCatalog groupCatalog = new FakeCatalog(
+        defaultLocalizedStringMap(), "example.com", false, "", "",
+        "ou=UserFilter", "ou=GroupFilter");
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    final AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    final String expectedGroupQuery = "(&(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))(ou=GroupFilter))";
+    assertEquals(expectedGroupQuery, groupCatalog.generateGroupLdapQuery());
+    final String expectedUserQuery = "(&(&(objectClass=user)"
+        + "(objectCategory=person))(ou=UserFilter))";
+    assertEquals(expectedUserQuery, groupCatalog.generateUserLdapQuery());
+    final String expectedQuery = "(|" + expectedGroupQuery + expectedUserQuery
+        + ")";
+    assertEquals(expectedQuery, groupCatalog.generateLdapQuery());
+
+    groupCatalog.resetCrawlFlags();
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
+
+    groupCatalog.readEverythingFrom(adServer, /*includeMembers=*/ true);
+    assertTrue(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
+
+    groupCatalog.resetCrawlFlags();
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name", "0x0123456789abc",
+        12345677L); // earlier USN than previous run: does an incremental run
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertTrue(groupCatalog.ranIncrementalCrawl());
+  }
+
+  @Test
+  public void testLdapQueriesWithBaseDNsButNoFilters() throws Exception {
+    final FakeAdaptor adAdaptor = new FakeAdaptor();
+    final FakeCatalog groupCatalog = new FakeCatalog(
+        defaultLocalizedStringMap(), "example.com", false, "ou=UserBaseDn",
+        "ou=GroupBaseDn", "", "");
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    final AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    final String expectedGroupQuery = "(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))";
+    assertEquals(expectedGroupQuery, groupCatalog.generateGroupLdapQuery());
+    final String expectedUserQuery = "(&(objectClass=user)"
+        + "(objectCategory=person))";
+    assertEquals(expectedUserQuery, groupCatalog.generateUserLdapQuery());
+    final String expectedQuery = "(|" + expectedGroupQuery + expectedUserQuery
+        + ")";
+    try {
+      String query = groupCatalog.generateLdapQuery();
+      fail("Did not catch expected exception!");
+    } catch (IllegalArgumentException iae) {
+      assertTrue(iae.toString().contains("not handling differing BaseDNs"));
+    }
+
+    groupCatalog.resetCrawlFlags();
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
+
+    groupCatalog.readEverythingFrom(adServer, /*includeMembers=*/ true);
+    assertTrue(groupCatalog.ranFullCrawl());
+    assertFalse(groupCatalog.ranIncrementalCrawl());
+
+    groupCatalog.resetCrawlFlags();
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name", "0x0123456789abc",
+        12345677L); // earlier USN than previous run: does an incremental run
+    assertFalse(groupCatalog.ranFullCrawl());
+    assertTrue(groupCatalog.ranIncrementalCrawl());
+  }
+
+  @Test
+  public void testLdapQueriesWithBaseDNsAndFilters() throws Exception {
+    final FakeAdaptor adAdaptor = new FakeAdaptor();
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder()
+        .setUserSearchBaseDN("ou=UserBaseDn")
+        .setGroupSearchBaseDN("ou=GroupBaseDn")
+        .setUserSearchFilter("ou=UserFilter")
+        .setGroupSearchFilter("ou=GroupFilter").build();
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    final AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    final String expectedGroupQuery = "(&(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))(ou=GroupFilter))";
+    assertEquals(expectedGroupQuery, groupCatalog.generateGroupLdapQuery());
+    final String expectedUserQuery = "(&(&(objectClass=user)"
+        + "(objectCategory=person))(ou=UserFilter))";
+    assertEquals(expectedUserQuery, groupCatalog.generateUserLdapQuery());
+    final String expectedQuery = "(|" + expectedGroupQuery + expectedUserQuery
+        + ")";
+    try {
+      String query = groupCatalog.generateLdapQuery();
+      fail("Did not catch expected exception!");
+    } catch (IllegalArgumentException iae) {
+      assertTrue(iae.toString().contains("not handling differing BaseDNs"));
+    }
+
+    groupCatalog.readEverythingFrom(adServer, /*includeMembers=*/ false);
+    groupCatalog.readUpdatesFrom(adServer, "ds_service_name", "0x0123456789abc",
+        12345677L); // earlier USN than previous run: does an incremental run
+  }
+
+  @Test
   public void testFullCrawlVersusIncrementalCrawlFlow() throws Exception {
     final FakeAdaptor adAdaptor = new FakeAdaptor();
     final FakeCatalog groupCatalog = new FakeCatalog(
-        defaultLocalizedStringMap(), "example.com", false);
+        defaultLocalizedStringMap(), "example.com", false, "", "", "", "");
     MockLdapContext ldapContext = defaultMockLdapContext();
     final AdServer adServer = new AdServer("localhost", ldapContext);
     adServer.initialize();
@@ -431,10 +553,7 @@ public class AdAdaptorTest {
 
   @Test
   public void testGroupCatalogReadFromIncrementalCrawl() throws Exception {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a group
     String filter = "(|(&(objectClass=group)"
@@ -485,8 +604,8 @@ public class AdAdaptorTest {
         "0x0123456789abc", 12345677L);
 
     // extract incrementally-added user as one golden entity
-    Set<AdEntity> incrementalUserSet = adServer.search(incrementalFilter, false,
-        new String[] { "member", "objectSid;binary", "objectGUID;binary",
+    Set<AdEntity> incrementalUserSet = adServer.search("", incrementalFilter,
+        false, new String[] { "member", "objectSid;binary", "objectGUID;binary",
             "primaryGroupId", "sAMAccountName" });
     goldenResults = incrementalUserSet;
     assertEquals(goldenResults, updateResults);
@@ -499,7 +618,7 @@ public class AdAdaptorTest {
     final AdEntity goldenUserEntity = searchedEntity[0];
 
     // extract group from full crawl as the other golden entity
-    Set<AdEntity> fullyCrawledGroupSet = adServer.search(filter, false,
+    Set<AdEntity> fullyCrawledGroupSet = adServer.search("", filter, false,
         new String[] { "member", "objectSid;binary", "objectGUID;binary",
             "primaryGroupId", "sAMAccountName" });
     assertEquals(1, fullyCrawledGroupSet.size());
@@ -524,13 +643,13 @@ public class AdAdaptorTest {
     goldenDomain.put(goldenUserEntity, "BUILTIN");
     goldenDomain.put(goldenGroupEntity, "GSA-CONNECTORS");
 
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ true,
-      /*entities*/ Sets.newHashSet(goldenUserEntity, goldenGroupEntity),
-      /*members*/ goldenMembers,
-      /*bySid*/ goldenSid,
-      /*byDn*/ goldenDn,
-      /*domain*/ goldenDomain);
+    final AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(Sets.newHashSet(goldenUserEntity, goldenGroupEntity))
+        .setMembers(goldenMembers)
+        .setBySid(goldenSid)
+        .setByDn(goldenDn)
+        .setDomain(goldenDomain).build();
     assertEquals(golden, groupCatalog);
 
     // do another incremental crawl with same results
@@ -542,10 +661,7 @@ public class AdAdaptorTest {
   @Test
   public void testGroupCatalogResolveForeignSecurityPrincipals()
       throws Exception {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a group
     String filter = "(|(&(objectClass=group)"
@@ -580,7 +696,7 @@ public class AdAdaptorTest {
 
     // add two additional entities to test all branches of our method.
     // first -- a user
-    Set<AdEntity> userEntitySet = adServer.search(filter2, false,
+    Set<AdEntity> userEntitySet = adServer.search("", filter2, false,
         new String[] { "cn", "objectSid;binary", "objectGUID;binary",
             "primaryGroupId", "sAMAccountName" });
     assertEquals(1, userEntitySet.size());
@@ -598,7 +714,7 @@ public class AdAdaptorTest {
     groupCatalog.resolveForeignSecurityPrincipals(groupCatalog.entities);
 
     // extract original group entity
-    Set<AdEntity> groupEntitySet = adServer.search(filter, false,
+    Set<AdEntity> groupEntitySet = adServer.search("", filter, false,
         new String[] { "member", "objectSid;binary", "objectGUID;binary",
             "sAMAccountName" });
     assertEquals(1, groupEntitySet.size());
@@ -631,15 +747,14 @@ public class AdAdaptorTest {
     goldenDn.put(goldenEntity.getDn(), goldenEntity);
     final Map<AdEntity, String> goldenDomain = new HashMap<AdEntity, String>();
     goldenDomain.put(goldenEntity, "GSA-CONNECTORS");
-    final AdAdaptor.GroupCatalog golden = new AdAdaptor.GroupCatalog(
-      defaultLocalizedStringMap(), "example.com", /*feedBuiltinGroups=*/ true,
-      /*entities*/ goldenEntities,
-      /*members*/ goldenMembers,
-      /*bySid*/ goldenSid,
-      /*byDn*/ goldenDn,
-      /*domain*/ goldenDomain);
-
-    assertTrue(golden.equals(groupCatalog));
+    final AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(goldenEntities)
+        .setMembers(goldenMembers)
+        .setBySid(goldenSid)
+        .setByDn(goldenDn)
+        .setDomain(goldenDomain).build();
+    assertEquals(golden, groupCatalog);
 
     // make sure resolveForeignSecurityPrincipals call is idempotent
     groupCatalog.resolveForeignSecurityPrincipals(groupCatalog.entities);
@@ -648,10 +763,7 @@ public class AdAdaptorTest {
 
   @Test
   public void testGroupCatalogMakeDefs() throws Exception {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
 
     MockLdapContext ldapContext = mockLdapContextForMakeDefs(false);
 
@@ -677,10 +789,7 @@ public class AdAdaptorTest {
 
   @Test
   public void testGroupCatalogMakeDefsWithDisabledGroup() throws Exception {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ false);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
 
     MockLdapContext ldapContext = mockLdapContextForMakeDefs(true);
 
@@ -704,10 +813,8 @@ public class AdAdaptorTest {
 
   @Test
   public void testGroupCatalogMakeDefsWellKnownParent() throws Exception {
-    Map<String, String> strings = defaultLocalizedStringMap();
-
-    AdAdaptor.GroupCatalog groupCatalog = new AdAdaptor.GroupCatalog(
-      strings, "example.com", /*feedBuiltinGroups=*/ true);
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true).build();
     Logger log = Logger.getLogger(AdAdaptor.class.getName());
     Level oldLevel = log.getLevel();
     log.setLevel(Level.FINER);
@@ -746,7 +853,7 @@ public class AdAdaptorTest {
         replacementGroup.getMembers().add("dn=");
         groupCatalog.members.put(groupWithNoName, new TreeSet<String>());
 
-        Set<AdEntity> emptyUser = adServer.search(filter, false,
+        Set<AdEntity> emptyUser = adServer.search("", filter, false,
         new String[] { "objectSid;binary", "objectGUID;binary",
                        "primaryGroupId", "sAMAccountName" });
         assertEquals(1, emptyUser.size());
@@ -807,6 +914,7 @@ public class AdAdaptorTest {
     configEntries.put("ad.defaultUser", "defaultUser");
     configEntries.put("ad.defaultPassword", "password");
     configEntries.put("ad.ldapReadTimeoutSecs", "");
+    configEntries.put("ad.userSearchFilter", "cn=UserNotFound");
     configEntries.put("server.port", "5680");
     configEntries.put("server.dashboardPort", "5681");
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
@@ -833,6 +941,50 @@ public class AdAdaptorTest {
     configEntries.put("ad.defaultUser", "defaultUser");
     configEntries.put("ad.defaultPassword", "password");
     configEntries.put("ad.ldapReadTimeoutSecs", "0");
+    configEntries.put("ad.groupSearchFilter", "cn=GroupNotFound");
+    configEntries.put("server.port", "5680");
+    configEntries.put("server.dashboardPort", "5681");
+    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
+        /*init=*/ true);
+    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    // the above (eventually) calls AdAdaptor.init() with the specified config.
+  }
+
+  @Test
+  public void testFakeAdaptorUserAndPasswordSpecified() throws Exception {
+    AdAdaptor adAdaptor = new FakeAdaptor();
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    Map<String, String> configEntries = new HashMap<String, String>();
+    configEntries.put("gsa.hostname", "localhost");
+    configEntries.put("ad.servers", "server1");
+    configEntries.put("ad.servers.server1.host", "localhost");
+    configEntries.put("ad.servers.server1.port", "1234");
+    configEntries.put("ad.servers.server1.user", "username");
+    configEntries.put("ad.servers.server1.password", "password");
+    configEntries.put("ad.servers.server1.method", "ssl");
+    configEntries.put("ad.userSearchBaseDN", "ou=DoesNotMatter");
+    configEntries.put("server.port", "5680");
+    configEntries.put("server.dashboardPort", "5681");
+    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
+        /*init=*/ true);
+    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    // the above (eventually) calls AdAdaptor.init() with the specified config.
+  }
+
+  @Test
+  public void testFakeAdaptorDefaultUserAndPasswordSpecified()
+      throws Exception {
+    AdAdaptor adAdaptor = new FakeAdaptor();
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    Map<String, String> configEntries = new HashMap<String, String>();
+    configEntries.put("gsa.hostname", "localhost");
+    configEntries.put("ad.servers", "server1");
+    configEntries.put("ad.servers.server1.host", "localhost");
+    configEntries.put("ad.servers.server1.port", "1234");
+    configEntries.put("ad.servers.server1.method", "ssl");
+    configEntries.put("ad.defaultUser", "defaultUser");
+    configEntries.put("ad.defaultPassword", "defaultPassword");
+    configEntries.put("ad.groupSearchBaseDN", "ou=DoesNotMatter");
     configEntries.put("server.port", "5680");
     configEntries.put("server.dashboardPort", "5681");
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
@@ -978,12 +1130,13 @@ public class AdAdaptorTest {
           int timesSearchCalled = 0;
           int timesEnsureConnectionCalled = 0;
           @Override
-          public Set<AdEntity> search(String filter, boolean deleted,
-              String[] attributes) throws InterruptedNamingException {
+          public Set<AdEntity> search(String baseDn, String filter,
+              boolean deleted, String[] attributes)
+              throws InterruptedNamingException {
             if (errorFilter.equals(filter) && timesSearchCalled++ == 0) {
               throw new InterruptedNamingException("First exception");
             } else {
-              return super.search(filter, deleted, attributes);
+              return super.search(baseDn, filter, deleted, attributes);
             }
           }
           @Override
@@ -1039,7 +1192,7 @@ public class AdAdaptorTest {
     return AdServerTest.hexStringToByteArray(s);
   }
 
-  private Map<String, String> defaultLocalizedStringMap() {
+  private static Map<String, String> defaultLocalizedStringMap() {
     Map<String, String> strings = new HashMap<String, String>();
     strings.put("Everyone", "everyone");
     strings.put("NTAuthority", "NT Authority");
@@ -1126,7 +1279,7 @@ public class AdAdaptorTest {
     // add two additional entities to test all branches of our method.
     assertEquals(1, groupCatalog.entities.size());
     // first -- a user
-    Set<AdEntity> userEntity = adServer.search(
+    Set<AdEntity> userEntity = adServer.search("",
         "(&(objectClass=user)(objectCategory=person))", false,
         new String[] { "cn", "objectSid;binary", "objectGUID;binary",
             "primaryGroupId", "sAMAccountName" });
@@ -1320,8 +1473,11 @@ public class AdAdaptorTest {
     private boolean ranIncrementalCrawl;
 
     public FakeCatalog(Map<String, String> localizedStrings, String namespace,
-        boolean feedBuiltinGroups) {
-      super(localizedStrings, namespace, feedBuiltinGroups);
+        boolean feedBuiltinGroups, String userSearchBaseDn,
+        String groupSearchBaseDn, String userSearchFilter,
+        String groupSearchFilter) {
+      super(localizedStrings, namespace, feedBuiltinGroups, userSearchBaseDn,
+          groupSearchBaseDn, userSearchFilter, groupSearchFilter);
     }
 
     @Override
@@ -1395,7 +1551,7 @@ public class AdAdaptorTest {
       }
       ranFullCrawl = true;
       return new AdAdaptor.GroupCatalog(defaultLocalizedStringMap(),
-          "example.com", /*feedBuiltinGroups=*/ true);
+          "example.com", /*feedBuiltinGroups=*/ true, "", "", "", "");
     }
   };
 
@@ -1430,6 +1586,107 @@ public class AdAdaptorTest {
           }
         }
       }));
+    }
+  }
+
+  private static class GroupCatalogBuilder {
+    private Map<String, String> localizedStrings = defaultLocalizedStringMap();
+    private String namespace = "example.com";
+    private boolean feedBuiltinGroups = false;
+    private String userSearchBaseDN = "";
+    private String groupSearchBaseDN = "";
+    private String userSearchFilter = "";
+    private String groupSearchFilter = "";
+    private Set<AdEntity> entities;
+    private Map<AdEntity, Set<String>> members;
+    private Map<String, AdEntity> bySid;
+    private Map<String, AdEntity> byDn;
+    private Map<AdEntity, String> domain;
+    /**
+     * The following field is only used by this Builder class, to determine if
+     * the build() method should call the standard constructor or the extended
+     * constructor.
+     */
+    private boolean useExtendedConstructor = false;
+
+    public GroupCatalogBuilder setLocalizedStrings(Map<String, String> locals) {
+      this.localizedStrings = locals;
+      return this;
+    }
+
+    public GroupCatalogBuilder setNamespace(String namespace) {
+      this.namespace = namespace;
+      return this;
+    }
+
+    public GroupCatalogBuilder setFeedBuiltinGroups(boolean feedBuiltinGroups) {
+      this.feedBuiltinGroups = feedBuiltinGroups;
+      return this;
+    }
+
+    public GroupCatalogBuilder setUserSearchBaseDN(String userSearchBaseDN) {
+      this.userSearchBaseDN = userSearchBaseDN;
+      return this;
+    }
+
+    public GroupCatalogBuilder setGroupSearchBaseDN(String groupSearchBaseDN) {
+      this.groupSearchBaseDN = groupSearchBaseDN;
+      return this;
+    }
+
+    public GroupCatalogBuilder setUserSearchFilter(String userSearchFilter) {
+      this.userSearchFilter = userSearchFilter;
+      return this;
+    }
+
+    public GroupCatalogBuilder setGroupSearchFilter(String groupSearchFilter) {
+      this.groupSearchFilter = groupSearchFilter;
+      return this;
+    }
+
+    // The remaining fields are the "extended" fields -- their setters set the
+    // variable as well as the flag to use the extended constructor.
+
+    public GroupCatalogBuilder setEntities(Set<AdEntity> entities) {
+      this.entities = entities;
+      this.useExtendedConstructor = true;
+      return this;
+    }
+
+    public GroupCatalogBuilder setMembers(Map<AdEntity, Set<String>> members) {
+      this.members = members;
+      this.useExtendedConstructor = true;
+      return this;
+    }
+
+    public GroupCatalogBuilder setBySid(Map<String, AdEntity> bySid) {
+      this.bySid = bySid;
+      this.useExtendedConstructor = true;
+      return this;
+    }
+
+    public GroupCatalogBuilder setByDn(Map<String, AdEntity> byDn) {
+      this.byDn = byDn;
+      this.useExtendedConstructor = true;
+      return this;
+    }
+
+    public GroupCatalogBuilder setDomain(Map<AdEntity, String> domain) {
+      this.domain = domain;
+      this.useExtendedConstructor = true;
+      return this;
+    }
+
+    public AdAdaptor.GroupCatalog build() {
+      if (useExtendedConstructor) {
+        return new AdAdaptor.GroupCatalog(localizedStrings, namespace,
+            feedBuiltinGroups, entities, members, bySid, byDn, domain,
+            userSearchBaseDN, groupSearchBaseDN, userSearchFilter,
+            groupSearchFilter);
+      }
+      return new AdAdaptor.GroupCatalog(localizedStrings, namespace,
+          feedBuiltinGroups, userSearchBaseDN, groupSearchBaseDN,
+          userSearchFilter, groupSearchFilter);
     }
   }
 }

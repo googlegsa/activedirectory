@@ -69,6 +69,10 @@ public class AdAdaptor extends AbstractAdaptor
   private boolean feedBuiltinGroups;
   private GroupCatalog lastCompleteGroupCatalog = null;
   private String ldapTimeoutInMillis;
+  private String userSearchBaseDN;
+  private String groupSearchBaseDN;
+  private String userSearchFilter;
+  private String groupSearchFilter;
 
   @Override
   public void initConfig(Config config) {
@@ -83,6 +87,10 @@ public class AdAdaptor extends AbstractAdaptor
     config.addKey("ad.localized.Builtin", "BUILTIN");
     config.addKey("ad.feedBuiltinGroups", "false");
     config.addKey("ad.ldapReadTimeoutSecs", "90");
+    config.addKey("ad.userSearchBaseDN", "");
+    config.addKey("ad.groupSearchBaseDN", "");
+    config.addKey("ad.userSearchFilter", "");
+    config.addKey("ad.groupSearchFilter", "");
   }
 
   @Override
@@ -97,6 +105,12 @@ public class AdAdaptor extends AbstractAdaptor
         config.getValue("ad.feedBuiltinGroups"));
     ldapTimeoutInMillis = parseLdapTimeoutInMillis(
         config.getValue("ad.ldapReadTimeoutSecs"));
+    // TBD(myk): Determine if any of the following need any sort of validation
+    // beyond the single warning logged if any are provided.
+    userSearchBaseDN = config.getValue("ad.userSearchBaseDN");
+    groupSearchBaseDN = config.getValue("ad.groupSearchBaseDN");
+    userSearchFilter = config.getValue("ad.userSearchFilter");
+    groupSearchFilter = config.getValue("ad.groupSearchFilter");
     // register for incremental pushes
     context.setPollingIncrementalLister(this);
     List<Map<String, String>> serverConfigs
@@ -213,12 +227,14 @@ public class AdAdaptor extends AbstractAdaptor
   @VisibleForTesting
   GroupCatalog makeFullCatalog() throws InterruptedException, IOException {
     GroupCatalog cumulativeCatalog = new GroupCatalog(localizedStrings,
-        namespace, feedBuiltinGroups);
+        namespace, feedBuiltinGroups, userSearchBaseDN, groupSearchBaseDN,
+        userSearchFilter, groupSearchFilter);
     for (AdServer server : servers) {
       try {
         server.ensureConnectionIsCurrent();
         GroupCatalog catalog = new GroupCatalog(localizedStrings, namespace,
-              feedBuiltinGroups);
+              feedBuiltinGroups, userSearchBaseDN, groupSearchBaseDN,
+              userSearchFilter, groupSearchFilter);
         catalog.readEverythingFrom(server, /*includeMembers=*/ true);
         cumulativeCatalog.add(catalog);
       } catch (NamingException ne) {
@@ -240,8 +256,8 @@ public class AdAdaptor extends AbstractAdaptor
   public void getModifiedDocIds(DocIdPusher pusher) throws InterruptedException,
       IOException {
     if (!mutex.tryLock()) {
-      log.log(Level.FINE, "getModifiedDocIds could not acquire lock; " +
-          "will retry later.");
+      log.log(Level.FINE, "getModifiedDocIds could not acquire lock; "
+          + "will retry later.");
       return;
     }
     try {
@@ -314,12 +330,22 @@ public class AdAdaptor extends AbstractAdaptor
     final AdEntity interactive;
     final AdEntity authenticatedUsers;
     final Map<AdEntity, Set<String>> wellKnownMembership;
+    final String userSearchBaseDN;
+    final String groupSearchBaseDN;
+    final String userSearchFilter;
+    final String groupSearchFilter;
 
     public GroupCatalog(Map<String, String> localizedStrings, String namespace,
-        boolean feedBuiltinGroups) {
+        boolean feedBuiltinGroups, String userSearchBaseDN,
+        String groupSearchBaseDN, String userSearchFilter,
+        String groupSearchFilter) {
       this.localizedStrings = localizedStrings;
       this.namespace = namespace;
       this.feedBuiltinGroups = feedBuiltinGroups;
+      this.userSearchBaseDN = userSearchBaseDN;
+      this.groupSearchBaseDN = groupSearchBaseDN;
+      this.userSearchFilter = userSearchFilter;
+      this.groupSearchFilter = groupSearchFilter;
       everyone = new AdEntity("S-1-1-0",
           MessageFormat.format("CN={0}",
           localizedStrings.get("Everyone")));
@@ -366,8 +392,15 @@ public class AdAdaptor extends AbstractAdaptor
         Map<AdEntity, Set<String>> members,
         Map<String, AdEntity> bySid,
         Map<String, AdEntity> byDn,
-        Map<AdEntity, String> domain) {
-      this(localizedStrings, namespace, feedBuiltinGroups);
+        Map<AdEntity, String> domain,
+        String userSearchBaseDN,
+        String groupSearchBaseDN,
+        String userSearchFilter,
+        String groupSearchFilter) {
+      this(localizedStrings, namespace, feedBuiltinGroups, userSearchBaseDN,
+          groupSearchBaseDN, userSearchFilter, groupSearchFilter);
+      this.localizedStrings = localizedStrings;
+      this.namespace = namespace;
       this.entities.clear();
       this.entities.addAll(entities);
       this.members.putAll(members);
@@ -386,16 +419,77 @@ public class AdAdaptor extends AbstractAdaptor
           nonMemberAttributes.length + 1);
       allAttributes[nonMemberAttributes.length] = "member";
       log.log(Level.FINE, "Starting full crawl.");
-      // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
-      // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
-      entities = server.search("(|(&(objectClass=group)"
-          + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
-          + "(&(objectClass=user)(objectCategory=person)))",
-          /*deleted=*/ false,
-          includeMembers ? allAttributes : nonMemberAttributes);
+      if (groupSearchBaseDN.equals(userSearchBaseDN)) {
+        entities = server.search(userSearchBaseDN, generateLdapQuery(),
+            /*deleted=*/ false,
+            includeMembers ? allAttributes : nonMemberAttributes);
+      } else {
+        entities = server.search(groupSearchBaseDN, generateGroupLdapQuery(),
+            /*deleted=*/ false,
+            includeMembers ? allAttributes : nonMemberAttributes);
+        entities.addAll(server.search(userSearchBaseDN, generateUserLdapQuery(),
+            /*deleted=*/ false, nonMemberAttributes));
+      }
       // disabled groups handled later, in makeDefs()
       log.log(Level.FINE, "Ending full crawl - now starting processing.");
       processEntities(entities, server.getnETBIOSName());
+    }
+
+    /**
+     * Generates a query to return groups (optionally with a group filter).
+     * This is useful when either a user BaseDN or a group BaseDN has been
+     * specified (or if they are different).
+     */
+    @VisibleForTesting
+    String generateGroupLdapQuery() {
+      String groupQuery;
+      if ("".equals(groupSearchFilter)) {
+        groupQuery = "(&(objectClass=group)"
+            + "(groupType:1.2.840.113556.1.4.803:=2147483648))";
+        // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
+        // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
+      } else {
+        groupQuery = "(&(&(objectClass=group)"
+            + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
+            + "(" + groupSearchFilter + "))";
+      }
+      return groupQuery;
+    }
+
+    /**
+     * Generates a query to return users (optionally with a user filter).
+     * This is useful when either a user BaseDN or a group BaseDN has been
+     * specified (or if they are different).
+     */
+    @VisibleForTesting
+    String generateUserLdapQuery() {
+      String userQuery;
+      if ("".equals(userSearchFilter)) {
+        userQuery = "(&(objectClass=user)(objectCategory=person))";
+      } else {
+        userQuery = "(&(&(objectClass=user)(objectCategory=person))"
+            + "(" + userSearchFilter + "))";
+      }
+      return userQuery;
+    }
+
+    /**
+     * Generates a query to return users (optionally with a user filter) and
+     * groups (optionally with a group filter) -- this is only useful when
+     * neither a user BaseDN or a group BaseDN has been specified (or if they
+     * are both equal).
+     */
+    @VisibleForTesting
+    String generateLdapQuery() {
+      String groupQuery = generateGroupLdapQuery();
+      String userQuery = generateUserLdapQuery();
+      // error if BaseDNs are not equal
+      if (groupSearchBaseDN != userSearchBaseDN) {
+        throw new IllegalArgumentException("not handling differing "
+            + "BaseDNs properly!");
+      }
+      String query = "(|" + groupQuery + userQuery + ")";
+      return query;
     }
 
     /**
@@ -459,6 +553,13 @@ public class AdAdaptor extends AbstractAdaptor
     }
 
     private void processEntities(Set<AdEntity> entities, String nETBIOSName) {
+      if (!(("".equals(userSearchBaseDN)) && ("".equals(groupSearchBaseDN))
+          && ("".equals(userSearchFilter)) && ("".equals(groupSearchFilter)))) {
+        log.log(Level.CONFIG, "CAUTION: Customized LDAP search base(s) and/or "
+            + "filter(s) have been configured! If users are experiencing issues"
+            + " with finding content, investigate if relevant users/groups are "
+            + "being excluded from indexing.");
+      }
       log.log(Level.FINE, "received {0} entities from server", entities.size());
       for (AdEntity e : entities) {
         bySid.put(e.getSid(), e);
@@ -476,16 +577,25 @@ public class AdAdaptor extends AbstractAdaptor
     Set<AdEntity> incrementalCrawl(AdServer server, long previousHighestUSN,
         long currentHighestUSN) throws InterruptedNamingException {
       log.log(Level.FINE, "Starting incremental crawl.");
-      // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
-      // and ADS_GROUP_TYPE_SECURITY_ENABLED = 2147483648.
-      Set<AdEntity> newOrModifiedEntities = server.search("(&(uSNChanged>="
-          + (previousHighestUSN + 1) + ")(|(&(objectClass=group)"
-          + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
-          + "(&(objectClass=user)(objectCategory=person))))",
-          /*deleted=*/ false,
-          new String[] { "uSNChanged", "sAMAccountName", "objectGUID;binary",
-              "objectSid;binary", "userPrincipalName", "primaryGroupId",
-              "member", "userAccountControl" });
+      final String[] attributes = new String[] { "uSNChanged", "member",
+          "sAMAccountName", "objectGUID;binary", "objectSid;binary",
+          "userPrincipalName", "primaryGroupId", "userAccountControl" };
+      Set<AdEntity> newOrModifiedEntities;
+
+      String newEntryQuery = "(uSNChanged>=" + (previousHighestUSN + 1) + ")";
+      if (groupSearchBaseDN.equals(userSearchBaseDN)) {
+        newOrModifiedEntities = server.search(userSearchBaseDN,
+            "(&" + newEntryQuery + generateLdapQuery() + ")",
+            /*deleted=*/ false, attributes);
+      } else {
+        newOrModifiedEntities = server.search(groupSearchBaseDN,
+            "(&" + newEntryQuery + generateGroupLdapQuery() + ")",
+            /*deleted=*/ false, attributes);
+        newOrModifiedEntities.addAll(server.search(userSearchBaseDN,
+            "(&" + newEntryQuery + generateUserLdapQuery() + ")",
+            /*deleted=*/ false, attributes));
+      }
+
       // disabled groups handled later, in makeDefs()
       log.log(Level.FINE, "Ending incremental crawl - now starting "
           + "processing.");

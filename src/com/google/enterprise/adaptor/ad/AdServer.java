@@ -306,21 +306,25 @@ public class AdServer {
 
   /**
    * Searches Active Directory and creates AdEntity on each result found
+   * @param baseDN baseDN for the search (use "dn" when empty/null)
    * @param filter LDAP filter to search in the AD for
    * @param attributes list of attributes to retrieve
    * @return list of entities found
    */
-  public Set<AdEntity> search(String filter, boolean deleted,
+  public Set<AdEntity> search(String baseDN, String filter, boolean deleted,
       String[] attributes) throws InterruptedNamingException {
     Set<AdEntity> results = new HashSet<AdEntity>();
     searchCtls.setReturningAttributes(attributes);
     setControls(deleted);
+    if (null == baseDN || "".equals(baseDN)) {
+      baseDN = dn;
+    }
     try {
       ensureConnectionIsCurrent();
       byte[] cookie = null;
       do {
         NamingEnumeration<SearchResult> ldapResults =
-            ldapContext.search(dn, filter, searchCtls);
+            ldapContext.search(baseDN, filter, searchCtls);
         while (ldapResults.hasMoreElements()) {
           SearchResult sr = ldapResults.next();
           try {
@@ -365,7 +369,8 @@ public class AdServer {
               "Retrieving additional groups for [" + g + "] " + memberRange);
           searchCtls.setReturningAttributes(new String[] {memberRange});
           NamingEnumeration<SearchResult> ldapResults = ldapContext.search(
-              dn, "(sAMAccountName=" + g.getSAMAccountName() + ")", searchCtls);
+              baseDN, "(sAMAccountName=" + g.getSAMAccountName() + ")",
+              searchCtls);
           SearchResult sr = ldapResults.next();
           int found = g.appendGroups(sr);
           start += found;
