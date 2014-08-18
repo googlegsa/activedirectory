@@ -33,6 +33,7 @@ import javax.naming.Context;
 import javax.naming.InterruptedNamingException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
+import javax.naming.ServiceUnavailableException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchControls;
@@ -148,12 +149,20 @@ public class AdServer {
         abortStartup = true;
       } else if (ne instanceof CommunicationException) {
         replaceException = true;
+      } else if (ne instanceof ServiceUnavailableException) {
+        replaceException = true;
       }
       if (replaceException) {
         String warning = String.format("Cannot connect to server \"%s\" as "
             + "user \"%s\" with the specified password.  Please make sure "
             + "they are specified correctly.  If the AD server is currently "
             + "down, please try again later.", hostName, principal);
+        if ((port == 3268) || (port == 3269)) {
+          warning = "AD Adaptor must be run against the Domain Controller "
+            + "(typically, port 389 for HTTP or port 636 for SSL), not the "
+            + "Global Catalog.";
+          abortStartup = true;
+        }
         if (abortStartup) {
           throw new StartupException(warning, ne);
         } else {
