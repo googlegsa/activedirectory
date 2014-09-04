@@ -28,28 +28,39 @@ and resolve groups from multiple Active Directory servers.
   be for multiple AD servers. The variable <code>ad.servers</code>
   contains a list of server identifiers.
   <p>
-  Here is an example configuration (bold items are example values to be
-  replaced):
+  Here is an example configuration for a single server (bold items are example
+values to be replaced):
 <pre>
 gsa.hostname=<b>yourgsa.example.com</b>
 ad.defaultUser=<b>Admin</b>
 ad.defaultPassword=<b>PassW0RD</b>
-ad.servers=<b>firstServer,anotherAdServer</b>
-ad.servers.firstServer.host=<b>111.111.111.111</b>
-ad.servers.firstServer.method=standard
-ad.servers.firstServer.port=389
-ad.servers.firstServer.user=<b>EXAMPLE\\Administrator</b>
-ad.servers.firstServer.password=<b>yourpassword</b>
-ad.servers.anotherAdServer.host=<b>222.222.222.222</b>
-ad.servers.anotherAdServer.method=standard
-ad.servers.anotherAdServer.port=389
+ad.servers=<b>myServer</b>
+ad.servers.<b>myServer</b>.host=<b>111.111.111.111</b>
+ad.servers.<b>myServer</b>.method=standard
+ad.servers.<b>myServer</b>.port=389
+ad.servers.<b>myServer</b>.user=<b>EXAMPLE\\Administrator</b>
+ad.servers.<b>myServer</b>.password=<b>yourpassword</b>
+</pre>
+  Here is an example configuration for two domains (again, bold items are
+example values to be replaced):
+<pre>
+gsa.hostname=<b>yourgsa.example.com</b>
+ad.defaultUser=<b>Admin</b>
+ad.defaultPassword=<b>PassW0RD</b>
+# ad.servers is list of servers, one per domain
+ad.servers=<b>AMER,ASIA</b>
+ad.servers.<b>AMER</b>.host=<b>111.111.111.111</b>
+ad.servers.<b>AMER</b>.method=standard
+ad.servers.<b>AMER</b>.port=389
+ad.servers.<b>ASIA</b>.host=<b>222.222.222.222</b>
+ad.servers.<b>ASIA</b>.method=standard
+ad.servers.<b>ASIA</b>.port=389
+# Notice: ad.defaultUser can be overriden by providing particular user for a particular server.
+# Notice: ad.defaultPassword can be overriden by providing particular password for a particular server.
+ad.servers.<b>ASIA</b>.user=EXAMPLE\\Administrator
+ad.servers.<b>ASIA</b>.password=yourpassword
 </pre>
   <p>
-  Notice: <code>ad.defaultUser</code> can be overriden by providing particular
-  <code>user</code> for a particular server.<br>
-  Notice: <code>ad.defaultPassword</code> can be overriden by providing particular
-  <code>password</code> for a particular server.<br>
-
   <li> Create file named <code>logging.properties</code> in the same directory
   that contains adaptor binary:
   <pre>
