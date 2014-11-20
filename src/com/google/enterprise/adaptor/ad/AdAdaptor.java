@@ -111,8 +111,15 @@ public class AdAdaptor extends AbstractAdaptor
     groupSearchBaseDN = config.getValue("ad.groupSearchBaseDN");
     userSearchFilter = config.getValue("ad.userSearchFilter");
     groupSearchFilter = config.getValue("ad.groupSearchFilter");
-    // register for incremental pushes
-    context.setPollingIncrementalLister(this);
+    // register for incremental pushes if adaptor.incrementalPollPeriodSecs > 0
+    // this is a workaround, not a fix, for b/18028678
+    String incrementalPeriod =
+        config.getValue("adaptor.incrementalPollPeriodSecs");
+    if (Long.parseLong(incrementalPeriod) > 0) {
+      context.setPollingIncrementalLister(this);
+    } else {
+      log.log(Level.CONFIG, "incremental crawl/push feature disabled.");
+    }
     List<Map<String, String>> serverConfigs
         = config.getListOfConfigs("ad.servers");
     servers.clear();  // in case init gets called again
