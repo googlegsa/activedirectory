@@ -223,7 +223,7 @@ public class AdAdaptor extends AbstractAdaptor
       Map<GroupPrincipal, List<Principal>> groups =
           cumulativeCatalog.makeDefs(cumulativeCatalog.entities);
       pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
-      cumulativeCatalog.members.clear();
+      // no longer clear cumulativeCatalog.members as part of fix for b/18028678
       lastCompleteGroupCatalog = cumulativeCatalog;
     } finally {
       mutex.unlock();
@@ -310,7 +310,7 @@ public class AdAdaptor extends AbstractAdaptor
     Map<GroupPrincipal, List<Principal>> groups =
         lastCompleteGroupCatalog.makeDefs(allNewOrUpdatedEntities);
     pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
-    lastCompleteGroupCatalog.members.clear();
+    // no longer clear cumulativeCatalog.members as part of fix for b/18028678
   }
 
   // don't expose the <code>lastCompleteGroupCatalog</code> field, but do allow
@@ -328,6 +328,11 @@ public class AdAdaptor extends AbstractAdaptor
     boolean feedBuiltinGroups;
     Set<AdEntity> entities = new HashSet<AdEntity>();
     Map<AdEntity, Set<String>> members = new HashMap<AdEntity, Set<String>>();
+    // distinguish between members returned by the "members" attribute (above)
+    // from those members that belong to the group because their primaryGroupId
+    // indicates so (below).
+    Map<AdEntity, Set<String>> primaryMembers =
+        new HashMap<AdEntity, Set<String>>();
 
     Map<String, AdEntity> bySid = new HashMap<String, AdEntity>();
     Map<String, AdEntity> byDn = new HashMap<String, AdEntity>();
@@ -397,6 +402,7 @@ public class AdAdaptor extends AbstractAdaptor
     GroupCatalog(Map<String, String> localizedStrings, String namespace,
         boolean feedBuiltinGroups, Set<AdEntity> entities,
         Map<AdEntity, Set<String>> members,
+        Map<AdEntity, Set<String>> primaryMembers,
         Map<String, AdEntity> bySid,
         Map<String, AdEntity> byDn,
         Map<AdEntity, String> domain,
@@ -410,7 +416,12 @@ public class AdAdaptor extends AbstractAdaptor
       this.namespace = namespace;
       this.entities.clear();
       this.entities.addAll(entities);
-      this.members.putAll(members);
+      if (null != members) {
+        this.members.putAll(members);
+      }
+      if (null != primaryMembers) {
+        this.primaryMembers.putAll(primaryMembers);
+      }
       this.bySid.putAll(bySid);
       this.byDn.putAll(byDn);
       this.domain.putAll(domain);
@@ -610,9 +621,41 @@ public class AdAdaptor extends AbstractAdaptor
       for (AdEntity e : newOrModifiedEntities) {
         AdEntity oldEntity = bySid.get(e.getSid());
         if (oldEntity != null) {
+          // b/18028678: remove user from old primary group (if needed)
+          String oldPrimaryGroupSid = oldEntity.getPrimaryGroupSid();
+          String newPrimaryGroupSid = e.getPrimaryGroupSid();
+          if (oldPrimaryGroupSid != null &&
+              !oldPrimaryGroupSid.equals(newPrimaryGroupSid)) {
+            AdEntity oldPrimaryGroup = bySid.get(oldPrimaryGroupSid);
+            if (oldPrimaryGroup == null) {
+              log.log(Level.WARNING,
+                  "Primary group [{0}] for user [{1}] detected in previous "
+                      + "crawl not found during current crawl.  Not updating "
+                      + "group [{0}].",
+                  new Object[]{oldPrimaryGroupSid, oldEntity});
+            } else if (primaryMembers.containsKey(oldPrimaryGroup)) {
+              log.log(Level.FINER,
+                  "Removing entity [{0}] from primary members of group [{1}].",
+                  new Object[]{oldEntity, oldPrimaryGroup});
+              primaryMembers.get(oldPrimaryGroup).remove(oldEntity.getDn());
+            } else {
+              log.log(Level.WARNING,
+                  "Could not remove user [{0}] from group [{1}], as that "
+                      + "group''s membership was not cached.",
+                  new Object[]{oldEntity, oldPrimaryGroup});
+            }
+          }
           entities.remove(oldEntity);
+          if (oldEntity.isGroup()) {
+            members.remove(oldEntity);
+            // before removing the oldEntity from the primaryMembers HashMap,
+            // copy its elements (if not null) to the new entry for that group.
+            if (null != primaryMembers.get(oldEntity)) {
+              primaryMembers.put(e, primaryMembers.get(oldEntity));
+            }
+            primaryMembers.remove(oldEntity);
+          }
           byDn.remove(oldEntity.getDn());
-          members.remove(oldEntity);
           wellKnownMembership.get(everyone).remove(oldEntity.getDn());
         }
       }
@@ -624,7 +667,8 @@ public class AdAdaptor extends AbstractAdaptor
     }
 
     /**
-     * Correctly specify each group's members in the "members" data store
+     * Correctly specify each group's members in the "members" data store - not
+     * including "primary" members.
      */
     private void initializeMembers(Set<AdEntity> entities) {
       for (AdEntity entity : entities) {
@@ -637,7 +681,7 @@ public class AdAdaptor extends AbstractAdaptor
     /**
      * Make sure that each non-group entity's "primary" group exists in bySid
      *
-     * and contains that entity in the <code>members</code> data store.
+     * and contains that entity in the <code>primaryMembers</code> data store.
      */
     private void resolvePrimaryGroups(Set<AdEntity> entities) {
       int nadds = 0;
@@ -656,10 +700,11 @@ public class AdAdaptor extends AbstractAdaptor
               new Object[]{user.getPrimaryGroupSid(), user});
           continue;
         }
-        if (!members.containsKey(primaryGroup)) {
-          members.put(primaryGroup, new TreeSet<String>());
+        if (!primaryMembers.containsKey(primaryGroup) ||
+            (null == primaryMembers.get(primaryGroup))) {
+          primaryMembers.put(primaryGroup, new TreeSet<String>());
         }
-        members.get(primaryGroup).add(user.getDn());
+        primaryMembers.get(primaryGroup).add(user.getDn());
         wellKnownMembership.get(everyone).add(user.getDn());
         // add the primary and "everyone" groups to the list of modified entries
         // this is a no-op for a full crawl, but is needed for incremental crawl
@@ -690,7 +735,11 @@ public class AdAdaptor extends AbstractAdaptor
         }
         nGroups++;
         Set<String> resolvedMembers = new HashSet<String>();
-        for (String member : members.get(entity)) {
+        Set<String> allMembersForGroup = members.get(entity);
+        if (null != primaryMembers.get(entity)) {
+          allMembersForGroup.addAll(primaryMembers.get(entity));
+        }
+        for (String member : allMembersForGroup) {
           String sid = AdEntity.parseForeignSecurityPrincipal(member);
           if (null == sid) {
             resolvedMembers.add(member);
@@ -716,10 +765,20 @@ public class AdAdaptor extends AbstractAdaptor
     }
 
     Map<GroupPrincipal, List<Principal>> makeDefs(Set<AdEntity> entities) {
-      // Merge members with well known group members
+      // Merge members with well known group members and primary members
       Map<AdEntity, Set<String>> allMembers
           = new HashMap<AdEntity, Set<String>>(members);
       allMembers.putAll(wellKnownMembership);
+      // merge in primary members (can NOT use putAll(), as that replaces all
+      // existing values.  If there was a .mergeAll, we'd use it)
+      for (AdEntity group : primaryMembers.keySet()) {
+        if (null == allMembers.get(group)) {
+          log.log(Level.FINE, "makeDefs: no allMembers entry for " + group
+              + " -- its members were " + primaryMembers.get(group));
+        } else if (null != primaryMembers.get(group)) {
+          allMembers.get(group).addAll(primaryMembers.get(group));
+        }
+      }
       Map<GroupPrincipal, List<Principal>> groups
           = new HashMap<GroupPrincipal, List<Principal>>();
       for (AdEntity entity : entities) {
@@ -820,17 +879,19 @@ public class AdAdaptor extends AbstractAdaptor
     void add(GroupCatalog other) {
       entities.addAll(other.entities);
       members.putAll(other.members);
+      primaryMembers.putAll(other.primaryMembers);
       bySid.putAll(other.bySid);
       byDn.putAll(other.byDn);
       domain.putAll(other.domain);
-      for (Object o : wellKnownMembership.keySet()) {
-        wellKnownMembership.get(o).addAll(other.wellKnownMembership.get(o));
+      for (AdEntity e : wellKnownMembership.keySet()) {
+        wellKnownMembership.get(e).addAll(other.wellKnownMembership.get(e));
       }
     }
 
     void clear() {
       entities.clear();
       members.clear();
+      primaryMembers.clear();
       bySid.clear();
       byDn.clear();
       domain.clear();
@@ -840,7 +901,8 @@ public class AdAdaptor extends AbstractAdaptor
     @Override
     public int hashCode() {
       return Arrays.hashCode(
-          new Object[] {entities, members, bySid, byDn, domain});
+          new Object[] {entities, members, primaryMembers, bySid, byDn,
+              domain});
     }
 
     @Override
@@ -851,6 +913,7 @@ public class AdAdaptor extends AbstractAdaptor
       GroupCatalog gc = (GroupCatalog) o;
       return entities.equals(gc.entities)
           && members.equals(gc.members)
+          && primaryMembers.equals(gc.primaryMembers)
           && bySid.equals(gc.bySid)
           && byDn.equals(gc.byDn)
           && domain.equals(gc.domain)

@@ -265,7 +265,7 @@ public class AdAdaptorTest {
     final AdEntity goldenEntity = new AdEntity("S-1-5-32-544",
         "cn=name\\ under,DN_for_default_naming_context", "users", "sam");
     final Map<AdEntity, Set<String>> goldenMembers =
-        new HashMap<AdEntity, Set<String>>();
+        new HashMap<AdEntity, Set<String>>(); // stores (only) primary members
     goldenMembers.put(userGroup, Sets.newHashSet(goldenEntity.getDn()));
     final Map<String, AdEntity> goldenSid = new HashMap<String, AdEntity>();
     goldenSid.put("S-1-5-32-users", userGroup);
@@ -278,7 +278,7 @@ public class AdAdaptorTest {
     AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
         .setFeedBuiltinGroups(true)
         .setEntities(Sets.newHashSet(goldenEntity, userGroup, everyone))
-        .setMembers(goldenMembers)
+        .setPrimaryMembers(goldenMembers)
         .setBySid(goldenSid)
         .setByDn(goldenDn)
         .setDomain(goldenDomain).build();
@@ -651,6 +651,143 @@ public class AdAdaptorTest {
         .setByDn(goldenDn)
         .setDomain(goldenDomain).build();
     assertEquals(golden, groupCatalog);
+
+    // do another incremental crawl with same results
+    updateResults = groupCatalog.readUpdatesFrom(adServer, "ds_service_name",
+        "0x0123456789abc", 12345677L);
+    assertEquals(goldenResults, updateResults);
+    assertEquals(golden, groupCatalog);
+  }
+
+  @Test
+  public void testIncrementalCrawlUpdatesUserPrimaryGroup() throws Exception {
+    AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    // add a user and some groups
+    String filter = "(|(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
+        + "(&(objectClass=user)(objectCategory=person)))";
+    String incrementalFilter = "(&(uSNChanged>=12345678)" + filter + ")";
+    String searchDn = "DN_for_default_naming_context";
+    ldapContext.addSearchResult(filter, "cn", searchDn, "username")
+               .addSearchResult(filter, "objectSid;binary", searchDn,
+                                      // S-1-5-32-544: local Admin. group
+                   hexStringToByteArray("01020000000000052000000020020000"))
+               .addSearchResult(filter, "objectGUID;binary", searchDn,
+                   hexStringToByteArray("000102030405060708090a0b0e"))
+               .addSearchResult(filter, "primaryGroupId", searchDn, "groupA")
+               .addSearchResult(filter, "sAMAccountName", searchDn, "username");
+
+    // in the increment, we change the user to be a primary member of group B
+    ldapContext.addSearchResult(incrementalFilter, "cn", searchDn, "username")
+               .addSearchResult(incrementalFilter, "objectSid;binary", searchDn,
+                                      // S-1-5-32-544: local Admin. group
+                   hexStringToByteArray("01020000000000052000000020020000"))
+               .addSearchResult(incrementalFilter, "objectGUID;binary",
+                   searchDn, hexStringToByteArray("000102030405060708090a0b0e"))
+               .addSearchResult(incrementalFilter, "primaryGroupId", searchDn,
+                   "groupB")
+               .addSearchResult(incrementalFilter, "sAMAccountName", searchDn,
+                   "username");
+
+    AdEntity groupA = new AdEntity("S-1-5-32-groupA", "groupA");
+    AdEntity groupB = new AdEntity("S-1-5-32-groupB", "groupB");
+    AdEntity everyone = new AdEntity("S-1-1-0", "CN=everyone");
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+
+    groupCatalog.bySid.put("S-1-5-32-groupA", groupA);
+    groupCatalog.bySid.put("S-1-5-32-groupB", groupB);
+    groupCatalog.readEverythingFrom(adServer, /*includeMembers=*/ true);
+
+    final AdEntity goldenEntity = new AdEntity("S-1-5-32-544",
+        "cn=name\\ under,DN_for_default_naming_context", "groupA", "username");
+    final AdEntity updatedGoldenEntity = new AdEntity("S-1-5-32-544",
+        "cn=name\\ under,DN_for_default_naming_context", "groupB", "username");
+    final Map<AdEntity, Set<String>> goldenMembers =
+        new HashMap<AdEntity, Set<String>>(); // stores (only) primary members
+    goldenMembers.put(groupA, Sets.newHashSet(goldenEntity.getDn()));
+    final Map<String, AdEntity> goldenSid = new HashMap<String, AdEntity>();
+    goldenSid.put("S-1-5-32-groupA", groupA);
+    goldenSid.put("S-1-5-32-groupB", groupB);
+    goldenSid.put("S-1-5-32-544", goldenEntity);
+    final Map<String, AdEntity> goldenDn = new HashMap<String, AdEntity>();
+    goldenDn.put(goldenEntity.getDn(), goldenEntity);
+    final Map<AdEntity, String> goldenDomain = new HashMap<AdEntity, String>();
+    goldenDomain.put(goldenEntity, "BUILTIN");
+
+    AdAdaptor.GroupCatalog golden = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(Sets.newHashSet(goldenEntity, groupA, everyone))
+        .setPrimaryMembers(goldenMembers)
+        .setBySid(goldenSid)
+        .setByDn(goldenDn)
+        .setDomain(goldenDomain).build();
+    golden.wellKnownMembership.get(golden.everyone).add(goldenEntity.getDn());
+    assertTrue(golden.equals(groupCatalog));
+
+    // make sure readEverythingFrom call is idempotent
+    groupCatalog.readEverythingFrom(adServer, /*includeMembers=*/ true);
+    assertTrue(golden.equals(groupCatalog));
+
+    // first, do a full crawl
+    Set<AdEntity> updateResults = groupCatalog.readUpdatesFrom(adServer, null,
+        "0x0123456789abc", 12345677L);
+    Set<AdEntity> goldenResults = Collections.emptySet();
+    assertEquals(goldenResults, updateResults);
+
+    // now do an incremental crawl
+    updateResults = groupCatalog.readUpdatesFrom(adServer, "ds_service_name",
+        "0x0123456789abc", 12345677L);
+
+    Set<AdEntity> incrementalResults = adServer.search("", incrementalFilter,
+        false, new String[] { "member", "objectSid;binary", "objectGUID;binary",
+            "primaryGroupId", "sAMAccountName" });
+    goldenResults = incrementalResults;
+    goldenResults.add(groupB);
+    goldenResults.add(everyone);
+    assertEquals(goldenResults, updateResults);
+
+    assertEquals(3, incrementalResults.size());
+    AdEntity goldenUserEntity = null;
+    AdEntity goldenGroupEntity = null;
+    int expectedGroupCount = 2;
+    for (AdEntity ae : incrementalResults) {
+      if (ae.isGroup()) {
+        expectedGroupCount--;
+        goldenGroupEntity = ae;
+      } else {
+        goldenUserEntity = ae;
+      }
+    }
+    assertEquals(0, expectedGroupCount);
+    assertNotNull(goldenUserEntity);
+
+    final Map<AdEntity, Set<String>> goldenMembers2 =
+        new HashMap<AdEntity, Set<String>>();
+    goldenMembers2.put(groupA, groupA.getMembers());
+    goldenMembers2.put(groupB, Sets.newHashSet(goldenUserEntity.getDn()));
+    final Map<String, AdEntity> goldenSid2 =
+        new HashMap<String, AdEntity>();
+    goldenSid2.put(groupA.getSid(), groupA);
+    goldenSid2.put(groupB.getSid(), groupB);
+    goldenSid2.put(goldenUserEntity.getSid(), goldenUserEntity);
+    final Map<String, AdEntity> goldenDn2 =
+        new HashMap<String, AdEntity>();
+    goldenDn2.put(goldenUserEntity.getDn(), goldenUserEntity);
+    final Map<AdEntity, String> goldenDomain2 = new HashMap<AdEntity, String>();
+    goldenDomain2.put(goldenEntity, "BUILTIN");
+    goldenDomain2.put(updatedGoldenEntity, "BUILTIN");
+    final AdAdaptor.GroupCatalog golden2 = new GroupCatalogBuilder()
+        .setFeedBuiltinGroups(true)
+        .setEntities(Sets.newHashSet(updatedGoldenEntity, groupA, everyone))
+        .setPrimaryMembers(goldenMembers2)
+        .setBySid(goldenSid2)
+        .setByDn(goldenDn2)
+        .setDomain(goldenDomain2).build();
+    golden2.wellKnownMembership.get(groupCatalog.everyone).add(
+        goldenUserEntity.getDn());
+    assertEquals(golden2, groupCatalog);
 
     // do another incremental crawl with same results
     updateResults = groupCatalog.readUpdatesFrom(adServer, "ds_service_name",
@@ -1599,6 +1736,7 @@ public class AdAdaptorTest {
     private String groupSearchFilter = "";
     private Set<AdEntity> entities;
     private Map<AdEntity, Set<String>> members;
+    private Map<AdEntity, Set<String>> primaryMembers;
     private Map<String, AdEntity> bySid;
     private Map<String, AdEntity> byDn;
     private Map<AdEntity, String> domain;
@@ -1659,6 +1797,13 @@ public class AdAdaptorTest {
       return this;
     }
 
+    public GroupCatalogBuilder setPrimaryMembers(Map<AdEntity,
+        Set<String>> primaryMembers) {
+      this.primaryMembers = primaryMembers;
+      this.useExtendedConstructor = true;
+      return this;
+    }
+
     public GroupCatalogBuilder setBySid(Map<String, AdEntity> bySid) {
       this.bySid = bySid;
       this.useExtendedConstructor = true;
@@ -1680,8 +1825,8 @@ public class AdAdaptorTest {
     public AdAdaptor.GroupCatalog build() {
       if (useExtendedConstructor) {
         return new AdAdaptor.GroupCatalog(localizedStrings, namespace,
-            feedBuiltinGroups, entities, members, bySid, byDn, domain,
-            userSearchBaseDN, groupSearchBaseDN, userSearchFilter,
+            feedBuiltinGroups, entities, members, primaryMembers, bySid, byDn,
+            domain, userSearchBaseDN, groupSearchBaseDN, userSearchFilter,
             groupSearchFilter);
       }
       return new AdAdaptor.GroupCatalog(localizedStrings, namespace,
