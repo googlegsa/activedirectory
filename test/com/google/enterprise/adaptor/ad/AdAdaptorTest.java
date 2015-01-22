@@ -477,6 +477,21 @@ public class AdAdaptorTest {
   }
 
   @Test
+  public void testLdapQueriesWithSameBaseDNsButNoFilters() throws Exception {
+    final FakeAdaptor adAdaptor = new FakeAdaptor();
+    final FakeCatalog groupCatalog = new FakeCatalog(
+        defaultLocalizedStringMap(), "example.com", false,
+        new String("ou=CommonBaseDn"), new String("ou=CommonBaseDn"), "", "");
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    final AdServer adServer = new AdServer("localhost", ldapContext);
+    adServer.initialize();
+    String query = groupCatalog.generateLdapQuery();
+    assertEquals(query, "(|(&(objectClass=group)"
+        + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
+        + "(&(objectClass=user)(objectCategory=person)))");
+  }
+
+  @Test
   public void testFullCrawlVersusIncrementalCrawlFlow() throws Exception {
     final FakeAdaptor adAdaptor = new FakeAdaptor();
     final FakeCatalog groupCatalog = new FakeCatalog(

@@ -502,7 +502,7 @@ public class AdAdaptor extends AbstractAdaptor
       String groupQuery = generateGroupLdapQuery();
       String userQuery = generateUserLdapQuery();
       // error if BaseDNs are not equal
-      if (groupSearchBaseDN != userSearchBaseDN) {
+      if (!groupSearchBaseDN.equals(userSearchBaseDN)) {
         throw new IllegalArgumentException("not handling differing "
             + "BaseDNs properly!");
       }
