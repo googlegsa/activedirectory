@@ -37,6 +37,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
@@ -771,12 +772,13 @@ public class AdAdaptor extends AbstractAdaptor
       allMembers.putAll(wellKnownMembership);
       // merge in primary members (can NOT use putAll(), as that replaces all
       // existing values.  If there was a .mergeAll, we'd use it)
-      for (AdEntity group : primaryMembers.keySet()) {
-        if (null == allMembers.get(group)) {
-          log.log(Level.FINE, "makeDefs: no allMembers entry for " + group
-              + " -- its members were " + primaryMembers.get(group));
-        } else if (null != primaryMembers.get(group)) {
-          allMembers.get(group).addAll(primaryMembers.get(group));
+      for (Entry<AdEntity, Set<String>> primaryMember : primaryMembers.entrySet()) {
+    	final Set<String> entry = allMembers.get(primaryMember.getKey());
+        if (null == entry) {
+          log.log(Level.FINE, "makeDefs: no allMembers entry for " + primaryMember.getKey()
+              + " -- its members were " + primaryMember.getValue());
+        } else if (null != primaryMember.getValue()) {
+        	entry.addAll(primaryMember.getValue());
         }
       }
       Map<GroupPrincipal, List<Principal>> groups
