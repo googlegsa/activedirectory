@@ -31,6 +31,7 @@ import javax.naming.AuthenticationException;
 import javax.naming.CommunicationException;
 import javax.naming.Context;
 import javax.naming.InterruptedNamingException;
+import javax.naming.NameNotFoundException;
 import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.ServiceUnavailableException;
@@ -387,6 +388,14 @@ public class AdServer {
       }
     } catch (InterruptedNamingException e) {
       throw e;
+    } catch (NameNotFoundException e) {
+      /* this can either be corrected by fixing the configuration file, or by
+         creating the particular baseDN on the AdServer -- hence we don't just
+         throw an InvalidConfigurationException here. */
+      throw new IllegalStateException("Could not find requested baseDN of "
+          + baseDN + " -- check your configuration file and make sure your "
+          + "specified ad.userSearchBaseDN and ad.groupSearchBaseDN properties "
+          + "are properly set.", e);
     } catch (NamingException e) {
       LOGGER.log(Level.WARNING, "", e);
     } catch (IOException e) {

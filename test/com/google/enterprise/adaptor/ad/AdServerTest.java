@@ -550,6 +550,60 @@ public class AdServerTest {
     }
   }
 
+  public AdServer helperSearchThrowsNamingException(final NamingException ne)
+      throws NamingException {
+    MockLdapContext ldapContext = new MockLdapContext() {
+      @Override
+      public NamingEnumeration<SearchResult> search(String base, String filter,
+        SearchControls searchControls) throws NamingException {
+        throw ne;
+      }
+    };
+    addStandardKeysAndResults(ldapContext);
+    AdServer adServer = new AdServer("localhost", ldapContext);
+    return adServer;
+  }
+
+  @Test
+  public void testSearchThrowsNameNotFoundException() throws NamingException {
+    AdServer adServer = helperSearchThrowsNamingException(
+        new NameNotFoundException("test"));
+    // expect exception to be thrown -- hence, we use try
+    try {
+      Set<AdEntity> resultSet = adServer.search("baseDN", "" /* filter */,
+          false, new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
+      fail("Did not catch expected exception.");
+    } catch (IllegalStateException ise) {
+      assertTrue("Unexpected exception", ise.getMessage().contains(
+          "Could not find requested baseDN"));
+    }
+  }
+
+  @Test
+  public void testSearchThrowsInterruptedNamingException()
+      throws NamingException {
+    AdServer adServer = helperSearchThrowsNamingException(
+        new InterruptedNamingException("foo"));
+    // expect exception to be thrown -- hence, we use try
+    try {
+      Set<AdEntity> resultSet = adServer.search("baseDN", "" /* filter */,
+          false, new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
+      fail("Did not catch expected exception.");
+    } catch (InterruptedNamingException ine) {
+      assertEquals("foo", ine.getMessage());
+    }
+  }
+
+  @Test
+  public void testSearchThrowsOtherNamingException() throws NamingException {
+    AdServer adServer = helperSearchThrowsNamingException(
+        new NamingException());
+    // expect exception to be logged, but not rethrown. Hence, no "try" here.
+    Set<AdEntity> resultSet = adServer.search("baseDN", "" /* filter */, false,
+        new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
+    assertEquals(0, resultSet.size());
+  }
+
   /**
     * Generate a common LdapContext used for various tests above
     */
