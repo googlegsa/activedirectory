@@ -35,7 +35,9 @@ public class AdServerTest {
 
   @Test
   public void testStandardServer() throws Exception {
-    AdServer adServer = new AdServer("hostname", new MockLdapContext());
+    AdServer adServer = new AdServer("hostname", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, new MockLdapContext());
     assertEquals("hostname", adServer.getHostName());
   }
 
@@ -43,55 +45,56 @@ public class AdServerTest {
   public void testNPEOnNullConnectMethod() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(null, "hostname", 1234, "principal", "pw",
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testNPEOnNullHostname() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(Method.SSL, null, 1234, "principal", "pw",
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testIAEOnEmptyHostname() throws Exception {
     thrown.expect(IllegalArgumentException.class);
     AdServer adServer = new AdServer(Method.SSL, "", 1234, "principal", "pw",
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testNPEOnNullPrincipal() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, null, "pw",
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testIAEOnEmptyPrincipal() throws Exception {
     thrown.expect(IllegalArgumentException.class);
     AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "", "pw",
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testNPEOnNullPassword() throws Exception {
     thrown.expect(NullPointerException.class);
     AdServer adServer = new AdServer(Method.SSL, "host", 1234, "princ", null,
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testIAEOnEmptyPassword() throws Exception {
     thrown.expect(IllegalArgumentException.class);
     AdServer adServer = new AdServer(Method.SSL, "hostname", 1234, "princ", "",
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testIAEOnBogusTimeout() throws Exception {
     thrown.expect(IllegalArgumentException.class);
     AdServer adServer = new AdServer(Method.SSL, "", 1234, "principal", "pw",
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter",
         "bogusTimeout");
   }
 
@@ -99,14 +102,15 @@ public class AdServerTest {
   public void testPublicSSLConstructor() throws Exception {
     thrown.expect(RuntimeException.class);
     AdServer adServer = new AdServer(Method.SSL, "localhost", 389, " ", " ",
-        "90000");
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
   public void testPublicStandardConstructor() throws Exception {
     thrown.expect(RuntimeException.class);
     AdServer adServer =
-        new AdServer(Method.STANDARD, "localhost", 389, " ", " ", "90000");
+        new AdServer(Method.STANDARD, "localhost", 389, " ", " ",
+        "userBaseDN", "groupBaseDN", "userFilter", "groupFilter", "90000");
   }
 
   @Test
@@ -116,7 +120,9 @@ public class AdServerTest {
     // populate additional attributes with values we can test
     ldapContext.addSearchResult("dn=empty", "empty", "empty", "")
                .addSearchResult("dn=empty", "attr1", "basedn", "val1");
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     assertEquals("localhost", adServer.getHostName());
     adServer.initialize();
     assertEquals("DN_for_default_naming_context", adServer.getDn());
@@ -141,7 +147,9 @@ public class AdServerTest {
           throw new NullPointerException("non-AD server");
       }
     };
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     try {
       adServer.initialize();
       fail("Did not catch expected InvalidConfigurationException.");
@@ -161,7 +169,9 @@ public class AdServerTest {
           throw new NullPointerException("non-AD server");
       }
     };
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     try {
       adServer.port = 3268;
       adServer.initialize();
@@ -182,7 +192,9 @@ public class AdServerTest {
           throw new NullPointerException("non-AD server");
       }
     };
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     try {
       adServer.port = 3269;
       adServer.initialize();
@@ -216,7 +228,9 @@ public class AdServerTest {
     };
     addStandardKeysAndResults(ldapContext);
     ldapContext.addSearchResult("dn=empty", "attr1", "basedn", "val1");
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     assertNull(adServer.get("dn=empty", "attr1", "basedn"));
   }
@@ -235,7 +249,9 @@ public class AdServerTest {
     };
     addStandardKeysAndResults(ldapContext);
     ldapContext.addSearchResult("dn=empty", "attr1", "basedn", "val1");
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     assertNull(adServer.get("dn=empty", "attr1", "basedn"));
   }
@@ -251,7 +267,9 @@ public class AdServerTest {
     };
     addStandardKeysAndResults(ldapContext);
     ldapContext.addSearchResult("dn=empty", "attr1", "basedn", "val1");
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
   }
 
@@ -270,7 +288,9 @@ public class AdServerTest {
       }
     };
     addStandardKeysAndResults(ldapContext);
-    AdServer adServer = new AdServer("localhost", ldapContext) {
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext) {
       @Override
       void recreateLdapContext() {
         // do nothing
@@ -289,7 +309,9 @@ public class AdServerTest {
       }
     };
     addStandardKeysAndResults(ldapContext);
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
   }
 
@@ -304,7 +326,9 @@ public class AdServerTest {
                .addSearchResult(filter, "primaryGroupId", userDn, "users")
                .addSearchResult(filter, "objectGUID;binary", userDn,
                    hexStringToByteArray("000102030405060708090a0b0c"));
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
@@ -325,7 +349,9 @@ public class AdServerTest {
                .addSearchResult(filter, "primaryGroupId", userDn, "users")
                .addSearchResult(filter, "objectGUID;binary", userDn,
                    hexStringToByteArray("000102030405060708090a0b0c"));
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search(null, filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
@@ -346,7 +372,9 @@ public class AdServerTest {
                .addSearchResult(filter, "primaryGroupId", userDn, "users")
                .addSearchResult(filter, "objectGUID;binary", userDn,
                    hexStringToByteArray("000102030405060708090a0b0c"));
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search(userDn, filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
@@ -365,7 +393,9 @@ public class AdServerTest {
     final String userDn = "DN_for_default_naming_context";
     ldapContext.addSearchResult(filter, "cn", userDn, "user1")
                .addSearchResult(filter, "primaryGroupId", userDn, "users");
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
@@ -388,7 +418,9 @@ public class AdServerTest {
     final String userDn = "DN_for_default_naming_context";
     ldapContext.addSearchResult(filter, "cn", userDn, "user1")
                .addSearchResult(filter, "primaryGroupId", userDn, "users");
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, false,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
@@ -406,7 +438,9 @@ public class AdServerTest {
                .addSearchResult(filter, "primaryGroupId", userDn, "users")
                .addSearchResult(filter, "objectGUID;binary", userDn,
                    hexStringToByteArray("000102030405060708090a0b0c"));
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, true,
         new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
@@ -432,7 +466,9 @@ public class AdServerTest {
     ldapContext.addSearchResult(filter, "cn", userDn, "users")
                .addSearchResult(filter, "objectGUID;binary", userDn,
                    hexStringToByteArray("000102030405060708090a0b0c"));
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, true,
         new String[] { "cn", "members", "objectGUID;binary" });
@@ -458,7 +494,9 @@ public class AdServerTest {
                .addSearchResult(filter, "objectGUID;binary", group2Dn,
                    hexStringToByteArray("000102030405060708090a0b0d"))
                .addSearchResult(filter, "member", group2Dn, members);
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, false,
         new String[] { "cn", "member", "objectGUID;binary" });
@@ -496,7 +534,9 @@ public class AdServerTest {
                .addSearchResult(filter2, "sAMAccountName", userDn, "sam2")
                .addSearchResult(filter2, "member;Range=2-3*", userDn,
                     moreMembers);
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, false,
         // need the ranged members for MockLdapContext, not for "real" AD.
@@ -534,7 +574,9 @@ public class AdServerTest {
                     moreMembers)
                .addSearchResult(filter2, "member;Range=4-5*", userDn,
                     evenMore);
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     adServer.initialize();
     Set<AdEntity> resultSet = adServer.search("", filter, false,
         // need the ranged members for MockLdapContext, not for "real" AD.
@@ -560,7 +602,9 @@ public class AdServerTest {
       }
     };
     addStandardKeysAndResults(ldapContext);
-    AdServer adServer = new AdServer("localhost", ldapContext);
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
     return adServer;
   }
 

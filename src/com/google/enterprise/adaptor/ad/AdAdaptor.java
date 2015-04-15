@@ -69,10 +69,10 @@ public class AdAdaptor extends AbstractAdaptor
   private boolean feedBuiltinGroups;
   private GroupCatalog lastCompleteGroupCatalog = null;
   private String ldapTimeoutInMillis;
-  private String userSearchBaseDN;
-  private String groupSearchBaseDN;
-  private String userSearchFilter;
-  private String groupSearchFilter;
+  private String globalUserSearchBaseDN;
+  private String globalGroupSearchBaseDN;
+  private String globalUserSearchFilter;
+  private String globalGroupSearchFilter;
 
   @Override
   public void initConfig(Config config) {
@@ -107,10 +107,10 @@ public class AdAdaptor extends AbstractAdaptor
         config.getValue("ad.ldapReadTimeoutSecs"));
     // TBD(myk): Determine if any of the following need any sort of validation
     // beyond the single warning logged if any are provided.
-    userSearchBaseDN = config.getValue("ad.userSearchBaseDN");
-    groupSearchBaseDN = config.getValue("ad.groupSearchBaseDN");
-    userSearchFilter = config.getValue("ad.userSearchFilter");
-    groupSearchFilter = config.getValue("ad.groupSearchFilter");
+    globalUserSearchBaseDN = config.getValue("ad.userSearchBaseDN");
+    globalGroupSearchBaseDN = config.getValue("ad.groupSearchBaseDN");
+    globalUserSearchFilter = config.getValue("ad.userSearchFilter");
+    globalGroupSearchFilter = config.getValue("ad.groupSearchFilter");
     // register for incremental pushes if adaptor.incrementalPollPeriodSecs > 0
     // this is a workaround, not a fix, for b/18028678
     String incrementalPeriod =
@@ -157,8 +157,25 @@ public class AdAdaptor extends AbstractAdaptor
         throw new InvalidConfigurationException("password not specified for "
             + "host " + host);
       }
+      String userSearchBaseDN = globalUserSearchBaseDN;
+      if (singleServerConfig.containsKey("userSearchBaseDN")) {
+        userSearchBaseDN = singleServerConfig.get("userSearchBaseDN");
+      }
+      String groupSearchBaseDN = globalGroupSearchBaseDN;
+      if (singleServerConfig.containsKey("groupSearchBaseDN")) {
+        groupSearchBaseDN = singleServerConfig.get("groupSearchBaseDN");
+      }
+      String userSearchFilter = globalUserSearchFilter;
+      if (singleServerConfig.containsKey("userSearchFilter")) {
+        userSearchFilter = singleServerConfig.get("userSearchFilter");
+      }
+      String groupSearchFilter = globalGroupSearchFilter;
+      if (singleServerConfig.containsKey("groupSearchFilter")) {
+        groupSearchFilter = singleServerConfig.get("groupSearchFilter");
+      }
       AdServer adServer = newAdServer(method, host, port, principal, passwd,
-          ldapTimeoutInMillis);
+          userSearchBaseDN, groupSearchBaseDN, userSearchFilter,
+          groupSearchFilter, ldapTimeoutInMillis);
       adServer.initialize();
       servers.add(adServer);
       Map<String, String> dup = new TreeMap<String, String>(singleServerConfig);
@@ -174,9 +191,12 @@ public class AdAdaptor extends AbstractAdaptor
    */
   @VisibleForTesting
   AdServer newAdServer(Method method, String host, int port,
-      String principal, String passwd, String ldapTimeoutInMillis)
+      String principal, String passwd, String userSearchBaseDN,
+      String groupSearchBaseDN, String userSearchFilter,
+      String groupSearchFilter, String ldapTimeoutInMillis)
       throws StartupException {
-    return new AdServer(method, host, port, principal, passwd,
+    return new AdServer(method, host, port, principal, passwd, userSearchBaseDN,
+        groupSearchBaseDN, userSearchFilter, groupSearchFilter,
         ldapTimeoutInMillis);
   }
 
@@ -234,14 +254,12 @@ public class AdAdaptor extends AbstractAdaptor
   @VisibleForTesting
   GroupCatalog makeFullCatalog() throws InterruptedException, IOException {
     GroupCatalog cumulativeCatalog = new GroupCatalog(localizedStrings,
-        namespace, feedBuiltinGroups, userSearchBaseDN, groupSearchBaseDN,
-        userSearchFilter, groupSearchFilter);
+        namespace, feedBuiltinGroups);
     for (AdServer server : servers) {
       try {
         server.ensureConnectionIsCurrent();
         GroupCatalog catalog = new GroupCatalog(localizedStrings, namespace,
-              feedBuiltinGroups, userSearchBaseDN, groupSearchBaseDN,
-              userSearchFilter, groupSearchFilter);
+              feedBuiltinGroups);
         catalog.readEverythingFrom(server, /*includeMembers=*/ true);
         cumulativeCatalog.add(catalog);
       } catch (NamingException ne) {
@@ -342,22 +360,12 @@ public class AdAdaptor extends AbstractAdaptor
     final AdEntity interactive;
     final AdEntity authenticatedUsers;
     final Map<AdEntity, Set<String>> wellKnownMembership;
-    final String userSearchBaseDN;
-    final String groupSearchBaseDN;
-    final String userSearchFilter;
-    final String groupSearchFilter;
 
     public GroupCatalog(Map<String, String> localizedStrings, String namespace,
-        boolean feedBuiltinGroups, String userSearchBaseDN,
-        String groupSearchBaseDN, String userSearchFilter,
-        String groupSearchFilter) {
+        boolean feedBuiltinGroups) {
       this.localizedStrings = localizedStrings;
       this.namespace = namespace;
       this.feedBuiltinGroups = feedBuiltinGroups;
-      this.userSearchBaseDN = userSearchBaseDN;
-      this.groupSearchBaseDN = groupSearchBaseDN;
-      this.userSearchFilter = userSearchFilter;
-      this.groupSearchFilter = groupSearchFilter;
       everyone = new AdEntity("S-1-1-0",
           MessageFormat.format("CN={0}",
           localizedStrings.get("Everyone")));
@@ -405,13 +413,8 @@ public class AdAdaptor extends AbstractAdaptor
         Map<AdEntity, Set<String>> primaryMembers,
         Map<String, AdEntity> bySid,
         Map<String, AdEntity> byDn,
-        Map<AdEntity, String> domain,
-        String userSearchBaseDN,
-        String groupSearchBaseDN,
-        String userSearchFilter,
-        String groupSearchFilter) {
-      this(localizedStrings, namespace, feedBuiltinGroups, userSearchBaseDN,
-          groupSearchBaseDN, userSearchFilter, groupSearchFilter);
+        Map<AdEntity, String> domain) {
+      this(localizedStrings, namespace, feedBuiltinGroups);
       this.localizedStrings = localizedStrings;
       this.namespace = namespace;
       this.entities.clear();
@@ -437,20 +440,23 @@ public class AdAdaptor extends AbstractAdaptor
           nonMemberAttributes.length + 1);
       allAttributes[nonMemberAttributes.length] = "member";
       log.log(Level.FINE, "Starting full crawl.");
-      if (groupSearchBaseDN.equals(userSearchBaseDN)) {
-        entities = server.search(userSearchBaseDN, generateLdapQuery(),
-            /*deleted=*/ false,
+      if (server.getGroupSearchBaseDN().equals(server.getUserSearchBaseDN())) {
+        entities = server.search(server.getUserSearchBaseDN(),
+            generateLdapQuery(server), /*deleted=*/ false,
             includeMembers ? allAttributes : nonMemberAttributes);
       } else {
-        entities = server.search(groupSearchBaseDN, generateGroupLdapQuery(),
-            /*deleted=*/ false,
+        entities = server.search(server.getGroupSearchBaseDN(),
+            generateGroupLdapQuery(server), /*deleted=*/ false,
             includeMembers ? allAttributes : nonMemberAttributes);
-        entities.addAll(server.search(userSearchBaseDN, generateUserLdapQuery(),
-            /*deleted=*/ false, nonMemberAttributes));
+        entities.addAll(server.search(server.getUserSearchBaseDN(),
+            generateUserLdapQuery(server), /*deleted=*/ false,
+            nonMemberAttributes));
       }
       // disabled groups handled later, in makeDefs()
       log.log(Level.FINE, "Ending full crawl - now starting processing.");
-      processEntities(entities, server.getnETBIOSName());
+      processEntities(entities, server.getnETBIOSName(),
+          server.getUserSearchBaseDN(), server.getGroupSearchBaseDN(),
+          server.getUserSearchFilter(), server.getGroupSearchFilter());
     }
 
     /**
@@ -459,9 +465,9 @@ public class AdAdaptor extends AbstractAdaptor
      * specified (or if they are different).
      */
     @VisibleForTesting
-    String generateGroupLdapQuery() {
+    String generateGroupLdapQuery(AdServer server) {
       String groupQuery;
-      if ("".equals(groupSearchFilter)) {
+      if ("".equals(server.getGroupSearchFilter())) {
         groupQuery = "(&(objectClass=group)"
             + "(groupType:1.2.840.113556.1.4.803:=2147483648))";
         // LDAP_MATCHING_RULE_BIT_AND = 1.2.840.113556.1.4.803
@@ -469,7 +475,7 @@ public class AdAdaptor extends AbstractAdaptor
       } else {
         groupQuery = "(&(&(objectClass=group)"
             + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
-            + "(" + groupSearchFilter + "))";
+            + "(" + server.getGroupSearchFilter() + "))";
       }
       return groupQuery;
     }
@@ -480,13 +486,13 @@ public class AdAdaptor extends AbstractAdaptor
      * specified (or if they are different).
      */
     @VisibleForTesting
-    String generateUserLdapQuery() {
+    String generateUserLdapQuery(AdServer server) {
       String userQuery;
-      if ("".equals(userSearchFilter)) {
+      if ("".equals(server.getUserSearchFilter())) {
         userQuery = "(&(objectClass=user)(objectCategory=person))";
       } else {
         userQuery = "(&(&(objectClass=user)(objectCategory=person))"
-            + "(" + userSearchFilter + "))";
+            + "(" + server.getUserSearchFilter() + "))";
       }
       return userQuery;
     }
@@ -498,11 +504,11 @@ public class AdAdaptor extends AbstractAdaptor
      * are both equal).
      */
     @VisibleForTesting
-    String generateLdapQuery() {
-      String groupQuery = generateGroupLdapQuery();
-      String userQuery = generateUserLdapQuery();
+    String generateLdapQuery(AdServer server) {
+      String groupQuery = generateGroupLdapQuery(server);
+      String userQuery = generateUserLdapQuery(server);
       // error if BaseDNs are not equal
-      if (!groupSearchBaseDN.equals(userSearchBaseDN)) {
+      if (!server.getGroupSearchBaseDN().equals(server.getUserSearchBaseDN())) {
         throw new IllegalArgumentException("not handling differing "
             + "BaseDNs properly!");
       }
@@ -570,7 +576,9 @@ public class AdAdaptor extends AbstractAdaptor
       return incrementalCrawl(server, previousHighestUSN, currentHighestUSN);
     }
 
-    private void processEntities(Set<AdEntity> entities, String nETBIOSName) {
+    private void processEntities(Set<AdEntity> entities, String nETBIOSName,
+        String userSearchBaseDN, String groupSearchBaseDN,
+        String userSearchFilter, String groupSearchFilter) {
       if (!(("".equals(userSearchBaseDN)) && ("".equals(groupSearchBaseDN))
           && ("".equals(userSearchFilter)) && ("".equals(groupSearchFilter)))) {
         log.log(Level.CONFIG, "CAUTION: Customized LDAP search base(s) and/or "
@@ -601,16 +609,16 @@ public class AdAdaptor extends AbstractAdaptor
       Set<AdEntity> newOrModifiedEntities;
 
       String newEntryQuery = "(uSNChanged>=" + (previousHighestUSN + 1) + ")";
-      if (groupSearchBaseDN.equals(userSearchBaseDN)) {
-        newOrModifiedEntities = server.search(userSearchBaseDN,
-            "(&" + newEntryQuery + generateLdapQuery() + ")",
+      if (server.getGroupSearchBaseDN().equals(server.getUserSearchBaseDN())) {
+        newOrModifiedEntities = server.search(server.getUserSearchBaseDN(),
+            "(&" + newEntryQuery + generateLdapQuery(server) + ")",
             /*deleted=*/ false, attributes);
       } else {
-        newOrModifiedEntities = server.search(groupSearchBaseDN,
-            "(&" + newEntryQuery + generateGroupLdapQuery() + ")",
+        newOrModifiedEntities = server.search(server.getGroupSearchBaseDN(),
+            "(&" + newEntryQuery + generateGroupLdapQuery(server) + ")",
             /*deleted=*/ false, attributes);
-        newOrModifiedEntities.addAll(server.search(userSearchBaseDN,
-            "(&" + newEntryQuery + generateUserLdapQuery() + ")",
+        newOrModifiedEntities.addAll(server.search(server.getUserSearchBaseDN(),
+            "(&" + newEntryQuery + generateUserLdapQuery(server) + ")",
             /*deleted=*/ false, attributes));
       }
 
@@ -661,7 +669,9 @@ public class AdAdaptor extends AbstractAdaptor
       }
       // add the new-or-modified entries to our catalog
       entities.addAll(newOrModifiedEntities);
-      processEntities(newOrModifiedEntities, server.getnETBIOSName());
+      processEntities(newOrModifiedEntities, server.getnETBIOSName(),
+          server.getUserSearchBaseDN(), server.getGroupSearchBaseDN(),
+          server.getUserSearchFilter(), server.getGroupSearchFilter());
       log.log(Level.FINE, "Ending incremental crawl.");
       return newOrModifiedEntities;
     }

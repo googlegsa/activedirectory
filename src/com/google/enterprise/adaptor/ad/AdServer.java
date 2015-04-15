@@ -61,6 +61,12 @@ public class AdServer {
   private String principal;
   private String password;
 
+  // properties used by various specific searches
+  private String userSearchBaseDN;
+  private String groupSearchBaseDN;
+  private String userSearchFilter;
+  private String groupSearchFilter;
+
   // retrieved properties of the Active Directory controller
   private String nETBIOSName;
   private String dn;
@@ -73,10 +79,14 @@ public class AdServer {
   private String ldapTimeoutInMillis;
 
   public AdServer(Method connectMethod, String hostName,
-      int port, String principal, String password, String ldapTimeoutInMillis)
+      int port, String principal, String password,
+      String userSearchBaseDN, String groupSearchBaseDN,
+      String userSearchFilter, String groupSearchFilter,
+      String ldapTimeoutInMillis)
       throws StartupException {
-    this(hostName, createLdapContext(connectMethod, hostName, port,
-        principal, password, ldapTimeoutInMillis));
+    this(hostName, userSearchBaseDN, groupSearchBaseDN, userSearchFilter,
+        groupSearchFilter, createLdapContext(connectMethod, hostName, port,
+            principal, password, ldapTimeoutInMillis));
     this.connectMethod = connectMethod;
     this.port = port;
     this.principal = principal;
@@ -85,8 +95,14 @@ public class AdServer {
   }
 
   @VisibleForTesting
-  AdServer(String hostName, LdapContext ldapContext) {
+  AdServer(String hostName, String userSearchBaseDN, String groupSearchBaseDN,
+      String userSearchFilter, String groupSearchFilter,
+      LdapContext ldapContext) {
     this.hostName = hostName;
+    this.userSearchBaseDN = userSearchBaseDN;
+    this.groupSearchBaseDN = groupSearchBaseDN;
+    this.userSearchFilter = userSearchFilter;
+    this.groupSearchFilter = groupSearchFilter;
     this.ldapContext = ldapContext;
     searchCtls = new SearchControls();
     searchCtls.setSearchScope(SearchControls.SUBTREE_SCOPE);
@@ -440,6 +456,22 @@ public class AdServer {
    */
   public String getSid() {
     return sid;
+  }
+
+  public String getUserSearchBaseDN() {
+    return userSearchBaseDN;
+  }
+
+  public String getGroupSearchBaseDN() {
+    return groupSearchBaseDN;
+  }
+
+  public String getUserSearchFilter() {
+    return userSearchFilter;
+  }
+
+  public String getGroupSearchFilter() {
+    return groupSearchFilter;
   }
 
   class DeletedControl implements Control {
