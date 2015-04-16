@@ -1659,6 +1659,11 @@ public class AdAdaptorTest {
     }
 
     @Override
+    public void respondNoContent() throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
     public OutputStream getOutputStream() throws IOException {
       throw new UnsupportedOperationException();
     }
