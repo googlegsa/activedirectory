@@ -98,7 +98,8 @@ public class AdAdaptor extends AbstractAdaptor
     Config config = context.getConfig();
     namespace = config.getValue("adaptor.namespace");
     log.config("common namespace: " + namespace);
-    defaultUser = config.getValue("ad.defaultUser");
+    defaultUser = context.getSensitiveValueDecoder().decodeValue(
+        config.getValue("ad.defaultUser"));
     defaultPassword = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("ad.defaultPassword"));
     feedBuiltinGroups = Boolean.parseBoolean(
