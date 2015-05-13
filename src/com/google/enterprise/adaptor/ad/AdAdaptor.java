@@ -143,6 +143,8 @@ public class AdAdaptor extends AbstractAdaptor
       String principal = singleServerConfig.get("user");
       if (null == principal) {
         principal = defaultUser;
+      } else {
+        principal = context.getSensitiveValueDecoder().decodeValue(principal);
       }
       if (principal.isEmpty()) {
         throw new InvalidConfigurationException("user not specified for host "
