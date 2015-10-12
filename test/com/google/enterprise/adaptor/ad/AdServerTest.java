@@ -428,6 +428,34 @@ public class AdServerTest {
   }
 
   @Test
+  public void testGetResponseControlsNullDoesNotThrowNPE() throws Exception {
+    MockLdapContext ldapContext = new MockLdapContext() {
+      @Override
+      public Control[] getResponseControls() throws NamingException {
+        return null;
+      };
+    };
+    addStandardKeysAndResults(ldapContext);
+    // populate additional attributes with values we can test
+    final String filter = "ou=Users";
+    final String userDn = "DN_for_default_naming_context";
+    ldapContext.addSearchResult(filter, "cn", userDn, "user1")
+               .addSearchResult(filter, "primaryGroupId", userDn, "users")
+               .addSearchResult(filter, "objectGUID;binary", userDn,
+                   hexStringToByteArray("000102030405060708090a0b0c"));
+    AdServer adServer = new AdServer("localhost", "" /*userSearchBaseDN*/,
+        "" /*groupSearchBaseDN*/, "" /*userSearchFilter*/,
+        "" /*groupSearchFilter*/, ldapContext);
+    adServer.initialize();
+    Set<AdEntity> resultSet = adServer.search(userDn, filter, false,
+        new String[] { "cn", "primaryGroupId", "objectGUID;binary" });
+    assertEquals(1, resultSet.size());
+    for (AdEntity ae : resultSet) {
+      assertEquals("name under", ae.getCommonName());
+    }
+  }
+
+  @Test
   public void testSearchReturnsOneDeletedUser() throws Exception {
     MockLdapContext ldapContext = new MockLdapContext();
     addStandardKeysAndResults(ldapContext);

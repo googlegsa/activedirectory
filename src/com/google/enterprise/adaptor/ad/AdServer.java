@@ -367,12 +367,10 @@ public class AdServer {
           }
         }
         cookie = null;
-        Control[] resultResponseControls = ldapContext.getResponseControls();
-        for (int i = 0; i < resultResponseControls.length; ++i) {
-          if (resultResponseControls[i] instanceof
-              PagedResultsResponseControl) {
-            cookie = ((PagedResultsResponseControl) resultResponseControls[i])
-                .getCookie();
+        Control[] controls = ldapContext.getResponseControls();
+        for (int i = 0; controls != null && i < controls.length; ++i) {
+          if (controls[i] instanceof PagedResultsResponseControl) {
+            cookie = ((PagedResultsResponseControl) controls[i]).getCookie();
             ldapContext.setRequestControls(new Control[] {
                 new PagedResultsControl(1000, cookie, Control.CRITICAL)});
           }
