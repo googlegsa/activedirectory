@@ -17,6 +17,7 @@ package com.google.enterprise.adaptor.ad;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -1173,7 +1174,19 @@ public class AdAdaptorTest {
       golden.put(new GroupPrincipal("known_group", "example.com"),
           Collections.<Principal>emptyList());
     }
-    assertEquals(golden, groupCatalog.makeDefs(groupCatalog.entities));
+    final Map<GroupPrincipal, List<Principal>> results =
+        groupCatalog.makeDefs(groupCatalog.entities);
+    assertEquals("unexpected results size", golden.size(), results.size());
+    for (Map.Entry<GroupPrincipal, List<Principal>> e : golden.entrySet()) {
+      GroupPrincipal key = e.getKey();
+      List<Principal> value = e.getValue();
+      if (value == null) {
+        assertTrue("results did not have key " + key, results.containsKey(key));
+        assertNull("non-null result for key " + key, results.get(key));
+      } else {
+        assertEquals(value, results.get(key));
+      }
+    }
   }
 
   // Tests for the methods of the outer class
