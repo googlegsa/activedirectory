@@ -862,19 +862,6 @@ public class AdAdaptor extends AbstractAdaptor
         }
         groups.put(group, def);
       }
-      log.log(Level.FINE, "number of groups defined: {0}",
-           groups.keySet().size());
-      if (log.isLoggable(Level.FINER)) {
-        int numGroups = groups.keySet().size();
-        int totalMembers = 0;
-        for (List<Principal> def : groups.values()) {
-          totalMembers += def.size();
-        }
-        if (0 != numGroups) {
-          double mean = ((double) totalMembers) / numGroups;
-          log.finer("mean size of defined group: " + mean);
-        }
-      }
       return groups;
     }
 
