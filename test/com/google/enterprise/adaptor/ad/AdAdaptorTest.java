@@ -1185,6 +1185,7 @@ public class AdAdaptorTest {
         assertNull("non-null result for key " + key, results.get(key));
       } else {
         // Compare the lists for unordered equality, ignoring duplicates.
+        assertNotNull("null result for key " + key, results.get(key));
         assertEquals(Sets.newHashSet(value), Sets.newHashSet(results.get(key)));
       }
     }
