@@ -119,6 +119,27 @@ public class AdEntityTest {
   }
 
   @Test
+  public void testGetTextSid() throws Exception {
+    assertEquals(
+        "S-1-0-0",
+        AdEntity.getTextSid(AdServerTest.hexStringToByteArray(
+            "010100000000000000000000")));
+    assertEquals(
+        "S-1-5-32-544",
+        AdEntity.getTextSid(AdServerTest.hexStringToByteArray(
+            "01020000000000052000000020020000")));
+    assertEquals(
+        "S-1-5-21-2127521184-1604012920-1887927527-72713",
+        AdEntity.getTextSid(AdServerTest.hexStringToByteArray(
+            "010500000000000515000000A065CF7E784B9B5FE77C8770091C0100")));
+    assertEquals(
+        "S-1-5-21-111168846-87976269-2130403006-1000-1604012920-1604012920-21",
+        AdEntity.getTextSid(AdServerTest.hexStringToByteArray(
+            "0108000000000005150000004E4DA0064D693E05BE5EFB7EE8030000784B9B5F"
+            + "784B9B5F15000000")));
+  }
+
+  @Test
   public void testAppendGroupsOnEmptyGroup() throws Exception {
     AdEntity adEntity = new AdEntity("parentGroup", "dc=com");
 

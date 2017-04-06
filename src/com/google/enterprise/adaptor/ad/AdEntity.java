@@ -176,26 +176,31 @@ public class AdEntity {
    * types between databases.
    * @param objectSid binary array with the SID
    * @return textual representation of SID or null
+   * @see <a href="https://msdn.microsoft.com/en-us/library/gg465313.aspx">
+   *     SID Packet Representation</a>
    */
   public static String getTextSid(byte[] objectSid) {
     if (objectSid == null) {
       return null;
     }
     StringBuilder strSID = new StringBuilder("S-");
-    long version = objectSid[0];
+    // read the Revision
+    long version = objectSid[0] & 0xFF;
     strSID.append(Long.toString(version));
-    long authority = objectSid[4];
 
-    for (int i = 0; i < 4; i++) {
+    // read the SubAuthorityCount
+    long count = objectSid[1] & 0xFF;
+
+    // the IdentifierAuthority is stored as big-endian 48 bit integer
+    long authority = objectSid[2] & 0xFF;
+    for (int i = 1; i < 6; i++) {
       authority <<= 8;
-      authority += objectSid[4 + i] & 0xFF;
+      authority += objectSid[2 + i] & 0xFF;
     }
     strSID.append('-').append(Long.toString(authority));
-    long count = objectSid[2];
-    count <<= 8;
-    count += objectSid[1] & 0xFF;
 
     long rid;
+    // each SubAuthority is stored as little-endian 32-bit integer
     for (int j = 0; j < count; j++) {
       rid = objectSid[11 + (j * 4)] & 0xFF;
       for (int k = 1; k < 4; k++) {
