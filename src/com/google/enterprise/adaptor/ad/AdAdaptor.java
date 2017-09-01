@@ -14,6 +14,10 @@
 
 package com.google.enterprise.adaptor.ad;
 
+import static com.google.enterprise.adaptor.DocIdPusher.EVERYTHING_CASE_INSENSITIVE;
+import static com.google.enterprise.adaptor.DocIdPusher.FeedType.FULL;
+import static com.google.enterprise.adaptor.DocIdPusher.FeedType.INCREMENTAL;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.AdaptorContext;
@@ -52,7 +56,7 @@ public class AdAdaptor extends AbstractAdaptor
     implements PollingIncrementalLister {
   private static final Logger log
       = Logger.getLogger(AdAdaptor.class.getName());
-  private static final boolean CASE_SENSITIVITY = false;
+
   /**
    * Only one crawl (full or incremental) is done at a time, however:
    * when a full crawl is invoked, we wait until the lock is available;
@@ -245,7 +249,8 @@ public class AdAdaptor extends AbstractAdaptor
           cumulativeCatalog.entities);
       Map<GroupPrincipal, List<Principal>> groups =
           cumulativeCatalog.makeDefs(cumulativeCatalog.entities);
-      pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
+      pusher.pushGroupDefinitions(groups, EVERYTHING_CASE_INSENSITIVE, FULL,
+          null, null);
       // no longer clear cumulativeCatalog.members as part of fix for b/18028678
       lastCompleteGroupCatalog = cumulativeCatalog;
     } finally {
@@ -330,7 +335,8 @@ public class AdAdaptor extends AbstractAdaptor
         allNewOrUpdatedEntities);
     Map<GroupPrincipal, List<Principal>> groups =
         lastCompleteGroupCatalog.makeDefs(allNewOrUpdatedEntities);
-    pusher.pushGroupDefinitions(groups, CASE_SENSITIVITY);
+    pusher.pushGroupDefinitions(groups, EVERYTHING_CASE_INSENSITIVE,
+        INCREMENTAL, null, null);
     // no longer clear cumulativeCatalog.members as part of fix for b/18028678
   }
 
