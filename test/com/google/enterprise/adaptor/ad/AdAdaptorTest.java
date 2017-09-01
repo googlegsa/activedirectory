@@ -33,6 +33,8 @@ import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.Response;
 import com.google.enterprise.adaptor.TestHelper;
 import com.google.enterprise.adaptor.UserPrincipal;
+import com.google.enterprise.adaptor.testing.RecordingDocIdPusher;
+import com.google.enterprise.adaptor.testing.RecordingResponse;
 
 import org.junit.Test;
 
@@ -181,7 +183,7 @@ public class AdAdaptorTest {
   @Test
   public void testMakeFullCatalogFromTwoServersWithDifferentBaseDNsAndFilters()
       throws Exception {
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     MockLdapContext ldapContext = defaultMockLdapContext();
     // add a group to be found by server1
     String filter1 = "(&(&(objectClass=group)"
@@ -238,7 +240,8 @@ public class AdAdaptorTest {
     AdAdaptor adAdaptor = new FakeAdaptorWithSharedMockLdapContext(ldapContext);
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ true);
-    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    Map<GroupPrincipal, Collection<Principal>> results =
+        pusher.getGroupDefinitions();
     // the above (eventually) calls AdAdaptor.init() with the specified config.
 
     final AdEntity goldenEntity1 = new AdEntity("S-1-0-0",
@@ -1196,15 +1199,15 @@ public class AdAdaptorTest {
   @Test
   public void testFakeAdaptorGetDocContent() throws Exception {
     AdAdaptor adAdaptor = new FakeAdaptor();
-    MockResponse mockResponse = new MockResponse();
+    RecordingResponse mockResponse = new RecordingResponse();
     adAdaptor.getDocContent(null, mockResponse);
-    assertTrue(mockResponse.wasRespondNotFoundCalled());
+    assertEquals(RecordingResponse.State.NOT_FOUND, mockResponse.getState());
   }
 
   @Test
   public void testFakeAdaptorInit() throws Exception {
     AdAdaptor adAdaptor = new FakeAdaptor();
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     Map<String, String> configEntries = new HashMap<String, String>();
     configEntries.put("gsa.hostname", "localhost");
     configEntries.put("ad.servers", "server1,server2");
@@ -1224,14 +1227,15 @@ public class AdAdaptorTest {
     configEntries.put("server.dashboardPort", "5681");
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ true);
-    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    Map<GroupPrincipal, Collection<Principal>> results =
+        pusher.getGroupDefinitions();
     // the above (eventually) calls AdAdaptor.init() with the specified config.
   }
 
   @Test
   public void testFakeAdaptorInitZeroTimeout() throws Exception {
     AdAdaptor adAdaptor = new FakeAdaptor();
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     Map<String, String> configEntries = new HashMap<String, String>();
     configEntries.put("gsa.hostname", "localhost");
     configEntries.put("ad.servers", "server1,server2");
@@ -1251,14 +1255,15 @@ public class AdAdaptorTest {
     configEntries.put("server.dashboardPort", "5681");
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ true);
-    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    Map<GroupPrincipal, Collection<Principal>> results =
+        pusher.getGroupDefinitions();
     // the above (eventually) calls AdAdaptor.init() with the specified config.
   }
 
   @Test
   public void testFakeAdaptorUserAndPasswordSpecified() throws Exception {
     AdAdaptor adAdaptor = new FakeAdaptor();
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     Map<String, String> configEntries = new HashMap<String, String>();
     configEntries.put("gsa.hostname", "localhost");
     configEntries.put("ad.servers", "server1");
@@ -1272,7 +1277,8 @@ public class AdAdaptorTest {
     configEntries.put("server.dashboardPort", "5681");
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ true);
-    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    Map<GroupPrincipal, Collection<Principal>> results =
+        pusher.getGroupDefinitions();
     // the above (eventually) calls AdAdaptor.init() with the specified config.
   }
 
@@ -1280,7 +1286,7 @@ public class AdAdaptorTest {
   public void testFakeAdaptorDefaultUserAndPasswordSpecified()
       throws Exception {
     AdAdaptor adAdaptor = new FakeAdaptor();
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     Map<String, String> configEntries = new HashMap<String, String>();
     configEntries.put("gsa.hostname", "localhost");
     configEntries.put("ad.servers", "server1");
@@ -1294,7 +1300,8 @@ public class AdAdaptorTest {
     configEntries.put("server.dashboardPort", "5681");
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ true);
-    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    Map<GroupPrincipal, Collection<Principal>> results =
+        pusher.getGroupDefinitions();
     // the above (eventually) calls AdAdaptor.init() with the specified config.
   }
 
@@ -1383,11 +1390,12 @@ public class AdAdaptorTest {
   @Test
   public void testFakeAdaptorGetDocIds() throws Exception {
     AdAdaptor adAdaptor = new FakeAdaptor();
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     Map<String, String> configEntries = defaultConfig();
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ true);
-    Map<GroupPrincipal, Collection<Principal>> results = pusher.getGroups();
+    Map<GroupPrincipal, Collection<Principal>> results =
+        pusher.getGroupDefinitions();
 
     final Map<GroupPrincipal, Collection<Principal>> goldenGroups =
         new HashMap<GroupPrincipal, Collection<Principal>>();
@@ -1406,13 +1414,13 @@ public class AdAdaptorTest {
     // make sure pushGroupDefinitions call is idempotent
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ false);
-    results = pusher.getGroups();
+    results = pusher.getGroupDefinitions();
     assertEquals(goldenGroups, results);
 
     // even when doing an incremental push
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ false,
         /*init=*/ false);
-    results = pusher.getGroups();
+    results = pusher.getGroupDefinitions();
     assertEquals(goldenGroups, results);
   }
 
@@ -1459,7 +1467,7 @@ public class AdAdaptorTest {
         };
       }
     };
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     Map<String, String> configEntries = defaultConfig();
     try {
       pushGroupDefinitions(adAdaptor, configEntries, pusher,
@@ -1650,105 +1658,6 @@ public class AdAdaptorTest {
     }
   }
 
-  /**
-   * Used to make sure nothing but responseNotFound() is called
-   */
-  public static class MockResponse implements Response {
-    private boolean respondNotFoundCalled = false;
-
-    public boolean wasRespondNotFoundCalled() {
-      return respondNotFoundCalled;
-    }
-
-    @Override
-    public void respondNotModified() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void respondNotFound() throws IOException {
-      if (respondNotFoundCalled) {
-        throw new AssertionError("respondNotFound() called twice");
-      }
-      respondNotFoundCalled = true;
-    }
-
-    @Override
-    public void respondNoContent() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public OutputStream getOutputStream() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setContentType(String contentType) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setLastModified(Date lastModified) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void addMetadata(String key, String value) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setAcl(Acl acl) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void putNamedResource(String fname, Acl facl) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setSecure(boolean secure) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void addAnchor(URI uri, String text) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setNoIndex(boolean noIndex) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setNoFollow(boolean noFollow) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setNoArchive(boolean noArchive) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setDisplayUrl(URI displayUrl) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setCrawlOnce(boolean crawlOnce) {
-      throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setLock(boolean lock) {
-      throw new UnsupportedOperationException();
-    }
-  }
-
   /** A version of AdAdaptor that uses only mock AdServers */
   public class FakeAdaptor extends AdAdaptor {
     @Override
@@ -1906,7 +1815,7 @@ public class AdAdaptorTest {
         @Override
         public void run() {
           try {
-            AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+            RecordingDocIdPusher pusher = new RecordingDocIdPusher();
             adAdaptor.getDocIds(pusher);
           } catch (Exception ex) {
             throw new RuntimeException(ex);
@@ -1923,7 +1832,7 @@ public class AdAdaptorTest {
         @Override
         public void run() {
           try {
-            AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+            RecordingDocIdPusher pusher = new RecordingDocIdPusher();
             adAdaptor.getModifiedDocIds(pusher);
           } catch (Exception ex) {
             throw new RuntimeException(ex);
