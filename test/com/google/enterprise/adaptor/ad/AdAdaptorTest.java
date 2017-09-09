@@ -23,29 +23,26 @@ import static org.junit.Assert.fail;
 
 import com.google.common.collect.Sets;
 
-import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Adaptor;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.InvalidConfigurationException;
+import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Principal;
-import com.google.enterprise.adaptor.Response;
-import com.google.enterprise.adaptor.TestHelper;
+import com.google.enterprise.adaptor.SensitiveValueDecoder;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.testing.RecordingDocIdPusher;
 import com.google.enterprise.adaptor.testing.RecordingResponse;
+import com.google.enterprise.adaptor.testing.UnsupportedAdaptorContext;
 
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.OutputStream;
-import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -1640,9 +1637,28 @@ public class AdAdaptorTest {
     final Config config = new Config();
     adaptor.initConfig(config);
     for (Map.Entry<String, String> entry : configEntries.entrySet()) {
-      TestHelper.setConfigValue(config, entry.getKey(), entry.getValue());
+      config.overrideKey(entry.getKey(), entry.getValue());
     }
-    adaptor.init(TestHelper.createConfigAdaptorContext(config));
+    adaptor.init(new UnsupportedAdaptorContext() {
+        @Override
+        public Config getConfig() {
+          return config;
+        }
+
+        @Override
+        public void setPollingIncrementalLister(PollingIncrementalLister l) {
+        }
+
+        @Override
+        public SensitiveValueDecoder getSensitiveValueDecoder() {
+          return new SensitiveValueDecoder() {
+            @Override
+            public String decodeValue(String notEncodedDuringTesting) {
+              return notEncodedDuringTesting;
+            }
+          };
+        }
+      });
   }
 
   public static void pushGroupDefinitions(AdAdaptor adaptor,
