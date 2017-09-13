@@ -14,13 +14,21 @@
 
 package com.google.enterprise.adaptor.ad;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
 
-import javax.naming.directory.*;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.BasicAttributes;
+import javax.naming.directory.SearchResult;
 
 /** Test cases for {@link AdEntity}. */
 public class AdEntityTest {
@@ -173,7 +181,7 @@ public class AdEntityTest {
     attrs.put("member", null);
     Attribute memberAttr = attrs.get("member");
     memberAttr.clear();
-    for (String member: members) {
+    for (String member : members) {
       memberAttr.add(member);
     }
 

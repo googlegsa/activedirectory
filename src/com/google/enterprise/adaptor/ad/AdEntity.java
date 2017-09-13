@@ -327,15 +327,15 @@ public class AdEntity {
     }
     AdEntity other = (AdEntity) o;
     return dn.equals(other.dn)
-        && ((sAMAccountName == null) ? (other.sAMAccountName == null) :
-            sAMAccountName.equals(other.sAMAccountName))
-        && ((userPrincipalName == null) ? (other.userPrincipalName == null) :
-            userPrincipalName.equals(other.userPrincipalName))
-        && ((primaryGroupId == null) ? (other.primaryGroupId == null) :
-            primaryGroupId.equals(other.primaryGroupId))
+        && ((sAMAccountName == null) ? (other.sAMAccountName == null)
+            : sAMAccountName.equals(other.sAMAccountName))
+        && ((userPrincipalName == null) ? (other.userPrincipalName == null)
+            : userPrincipalName.equals(other.userPrincipalName))
+        && ((primaryGroupId == null) ? (other.primaryGroupId == null)
+            : primaryGroupId.equals(other.primaryGroupId))
         && ((sid == null) ? (other.sid == null) : sid.equals(other.sid))
-        && ((members == null) ? (other.members == null) :
-            members.equals(other.members))
+        && ((members == null) ? (other.members == null)
+            : members.equals(other.members))
         && uSNChanged == other.uSNChanged
         && userAccountControl == other.userAccountControl;
         // note: 3 fields (objectGUID, wellKnown, and allMembershipsRetrieved)
