@@ -16,11 +16,19 @@ package com.google.enterprise.adaptor.ad;
 
 import com.google.common.annotations.VisibleForTesting;
 
-import java.io.*;
-import java.util.*;
+import java.util.Collection;
+import java.util.Enumeration;
+import java.util.Hashtable;
+import java.util.NoSuchElementException;
+import java.util.Vector;
 
-import javax.naming.*;
-import javax.naming.directory.*;
+import javax.naming.NamingEnumeration;
+import javax.naming.NamingException;
+import javax.naming.directory.Attribute;
+import javax.naming.directory.Attributes;
+import javax.naming.directory.BasicAttributes;
+import javax.naming.directory.SearchControls;
+import javax.naming.directory.SearchResult;
 import javax.naming.ldap.Control;
 import javax.naming.ldap.InitialLdapContext;
 
@@ -99,7 +107,7 @@ public class MockLdapContext extends InitialLdapContext {
     if (value instanceof Collection<?>) {
       Attribute attr = attrs.get(newAttr);
       attr.clear();
-      for (Object member: (Collection<?>) value) {
+      for (Object member : (Collection<?>) value) {
         attr.add(member);
       }
     }

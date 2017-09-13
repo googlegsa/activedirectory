@@ -14,6 +14,7 @@
 
 package com.google.enterprise.adaptor.ad;
 
+/** Enumerates the LDAP connection methods. */
 public enum Method {
   STANDARD, SSL;
 

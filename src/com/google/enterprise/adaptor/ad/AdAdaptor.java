@@ -594,8 +594,8 @@ public class AdAdaptor extends AbstractAdaptor
         bySid.put(e.getSid(), e);
         byDn.put(e.getDn(), e);
         // TODO(pjo): Have AdServer put domain into AdEntity during search
-        domain.put(e, e.getSid().startsWith("S-1-5-32-") ?
-            localizedStrings.get("Builtin") : nETBIOSName);
+        domain.put(e, e.getSid().startsWith("S-1-5-32-")
+            ? localizedStrings.get("Builtin") : nETBIOSName);
       }
       initializeMembers(entities);
       resolvePrimaryGroups(entities);
@@ -635,8 +635,8 @@ public class AdAdaptor extends AbstractAdaptor
           // b/18028678: remove user from old primary group (if needed)
           String oldPrimaryGroupSid = oldEntity.getPrimaryGroupSid();
           String newPrimaryGroupSid = e.getPrimaryGroupSid();
-          if (oldPrimaryGroupSid != null &&
-              !oldPrimaryGroupSid.equals(newPrimaryGroupSid)) {
+          if (oldPrimaryGroupSid != null
+              && !oldPrimaryGroupSid.equals(newPrimaryGroupSid)) {
             AdEntity oldPrimaryGroup = bySid.get(oldPrimaryGroupSid);
             if (oldPrimaryGroup == null) {
               log.log(Level.WARNING,
@@ -713,8 +713,7 @@ public class AdAdaptor extends AbstractAdaptor
               new Object[]{user.getPrimaryGroupSid(), user});
           continue;
         }
-        if (!primaryMembers.containsKey(primaryGroup) ||
-            (null == primaryMembers.get(primaryGroup))) {
+        if (primaryMembers.get(primaryGroup) == null) {
           primaryMembers.put(primaryGroup, new TreeSet<String>());
         }
         primaryMembers.get(primaryGroup).add(user.getDn());
@@ -871,8 +870,8 @@ public class AdAdaptor extends AbstractAdaptor
      * principal name.
      */
     String getPrincipalName(AdEntity e) {
-      return domain.get(e) != null ?
-          e.getSAMAccountName() + "@" + domain.get(e) : e.getSAMAccountName();
+      return domain.get(e) != null
+          ? e.getSAMAccountName() + "@" + domain.get(e) : e.getSAMAccountName();
     }
 
     /* Combines info of another catalog with this one. */
