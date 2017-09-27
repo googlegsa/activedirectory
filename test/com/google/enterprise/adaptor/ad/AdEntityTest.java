@@ -196,11 +196,11 @@ public class AdEntityTest {
   @Test
   public void testParseForeignSecurityPrincipal() throws Exception {
     AdEntity adEntity = new AdEntity("NoComma", "dc=com");
-    assertNull(adEntity.parseForeignSecurityPrincipal(""));
-    assertNull(adEntity.parseForeignSecurityPrincipal(
+    assertNull(AdEntity.parseForeignSecurityPrincipal(""));
+    assertNull(AdEntity.parseForeignSecurityPrincipal(
         "cn=foreignsecurityprincipals,dc=example,dc=com"));
     String validSid = "S-1-5-21-42";
-    assertEquals(validSid, adEntity.parseForeignSecurityPrincipal(
+    assertEquals(validSid, AdEntity.parseForeignSecurityPrincipal(
         "id=" + validSid + ",cn=foreignsecurityprincipals,dc=example,dc=com"));
   }
 }

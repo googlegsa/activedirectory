@@ -92,7 +92,7 @@ public class MockLdapContext extends InitialLdapContext {
           results.add(currentResult);
         } else {
           Attributes attrs = currentResult.getAttributes();
-          this.addAttribute(attrs, attribute, o);
+          addAttribute(attrs, attribute, o);
           currentResult.setAttributes(attrs);
         }
       }
