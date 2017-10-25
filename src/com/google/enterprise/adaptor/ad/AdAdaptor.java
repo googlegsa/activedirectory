@@ -905,6 +905,14 @@ public class AdAdaptor extends AbstractAdaptor
     }
 
     @Override
+    public String toString() {
+      return "{ entities: " + entities + ", members: " + members
+          + ", primaryMembers: " + primaryMembers
+          + ", bySid: " + bySid + ", byDn: " + byDn + ", domain: " + domain
+          + ", wellKnownMembership: " + wellKnownMembership + " }";
+    }
+
+    @Override
     public int hashCode() {
       return Arrays.hashCode(
           new Object[] {entities, members, primaryMembers, bySid, byDn,

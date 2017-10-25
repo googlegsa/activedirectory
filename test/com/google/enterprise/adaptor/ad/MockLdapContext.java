@@ -63,6 +63,11 @@ public class MockLdapContext extends InitialLdapContext {
     return this;
   }
 
+  public MockLdapContext clearSearchResults() {
+    searchResults.clear();
+    return this;
+  }
+
   /** Returns a <code>NamingEnumeration</code> of <code>SearchResult</code>s */
   public NamingEnumeration<SearchResult> search(String base, String filter,
       SearchControls searchControls) throws NamingException {

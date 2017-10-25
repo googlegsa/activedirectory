@@ -248,7 +248,7 @@ public class AdEntity {
     result.append("uSNChanged", uSNChanged);
     result.append("userAccountControl", userAccountControl);
     result.append("allMembershipsRetrieved", allMembershipsRetrieved);
-    return result.toString();
+    return "{ " + result + "}";
   }
 
   /**
