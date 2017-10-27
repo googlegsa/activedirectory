@@ -234,7 +234,7 @@ public class AdAdaptorTest {
     configEntries.put("ad.groupSearchFilter", "cn=GroupNotFound");
     configEntries.put("server.port", "5680");
     configEntries.put("server.dashboardPort", "5681");
-    AdAdaptor adAdaptor = new FakeAdaptorWithSharedMockLdapContext(ldapContext);
+    AdAdaptor adAdaptor = new FakeAdaptor(ldapContext);
     pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
         /*init=*/ true);
     Map<GroupPrincipal, Collection<Principal>> results =
@@ -281,7 +281,7 @@ public class AdAdaptorTest {
         .setDomain(goldenDomain).build();
 
     AdAdaptor.GroupCatalog actual = adAdaptor.makeFullCatalog();
-    assertTrue(golden.equals(actual));
+    assertEquals(golden, actual);
   }
 
   @Test
@@ -456,7 +456,6 @@ public class AdAdaptorTest {
 
   @Test
   public void testLdapQueriesWithNoFiltersOrBaseDns() throws Exception {
-    final FakeAdaptor adAdaptor = new FakeAdaptor();
     final FakeCatalog groupCatalog = new FakeCatalog(
         defaultLocalizedStringMap(), "example.com", false);
     MockLdapContext ldapContext = defaultMockLdapContext();
@@ -493,7 +492,6 @@ public class AdAdaptorTest {
 
   @Test
   public void testLdapQueriesWithFilters() throws Exception {
-    final FakeAdaptor adAdaptor = new FakeAdaptor();
     final FakeCatalog groupCatalog = new FakeCatalog(
         defaultLocalizedStringMap(), "example.com", false);
     MockLdapContext ldapContext = defaultMockLdapContext();
@@ -530,7 +528,6 @@ public class AdAdaptorTest {
 
   @Test
   public void testLdapQueriesWithBaseDNsButNoFilters() throws Exception {
-    final FakeAdaptor adAdaptor = new FakeAdaptor();
     final FakeCatalog groupCatalog = new FakeCatalog(
         defaultLocalizedStringMap(), "example.com", false);
     MockLdapContext ldapContext = defaultMockLdapContext();
@@ -572,7 +569,6 @@ public class AdAdaptorTest {
 
   @Test
   public void testLdapQueriesWithBaseDNsAndFilters() throws Exception {
-    final FakeAdaptor adAdaptor = new FakeAdaptor();
     AdAdaptor.GroupCatalog groupCatalog = new GroupCatalogBuilder().build();
     MockLdapContext ldapContext = defaultMockLdapContext();
     final AdServer adServer = new AdServer("localhost", "ou=UserBaseDn",
@@ -602,7 +598,6 @@ public class AdAdaptorTest {
 
   @Test
   public void testLdapQueriesWithSameBaseDNsButNoFilters() throws Exception {
-    final FakeAdaptor adAdaptor = new FakeAdaptor();
     final FakeCatalog groupCatalog = new FakeCatalog(
         defaultLocalizedStringMap(), "example.com", false);
     MockLdapContext ldapContext = defaultMockLdapContext();
@@ -618,7 +613,6 @@ public class AdAdaptorTest {
 
   @Test
   public void testFullCrawlVersusIncrementalCrawlFlow() throws Exception {
-    final FakeAdaptor adAdaptor = new FakeAdaptor();
     final FakeCatalog groupCatalog = new FakeCatalog(
         defaultLocalizedStringMap(), "example.com", false);
     MockLdapContext ldapContext = defaultMockLdapContext();
@@ -1421,6 +1415,40 @@ public class AdAdaptorTest {
     assertEquals(goldenGroups, results);
   }
 
+  // TODO(bmj): Add tests with full and incremental pushes.
+  @Test
+  public void testMultipleFullGroupPushes() throws Exception {
+    MockLdapContext ldapContext = defaultMockLdapContext();
+    AdAdaptor adAdaptor = new FakeAdaptor(ldapContext);
+    RecordingDocIdPusher pusher = new RecordingDocIdPusher();
+    initializeAdaptorConfig(adAdaptor, defaultConfig());
+
+    adAdaptor.getDocIds(pusher);
+    HashMap<GroupPrincipal, Collection<Principal>> goldenGroups =
+        new HashMap<GroupPrincipal, Collection<Principal>>();
+    Principal everyone = new GroupPrincipal("Everyone", "Default");
+    goldenGroups.put((GroupPrincipal) everyone, new ArrayList<Principal>());
+    goldenGroups.put(new GroupPrincipal("Authenticated Users@NT Authority",
+        "Default"), Arrays.asList(everyone));
+    goldenGroups.put(new GroupPrincipal("Interactive@NT Authority",
+        "Default"), Arrays.asList(everyone));
+    assertEquals(goldenGroups, pusher.getGroupDefinitions());
+
+    // Add the sam group.
+    addDefsToMockLdapContext(ldapContext, false);
+    adAdaptor.getDocIds(pusher);
+    HashMap<GroupPrincipal, Collection<Principal>> newGoldenGroups =
+        new HashMap<GroupPrincipal, Collection<Principal>>(goldenGroups);
+    newGoldenGroups.put(new GroupPrincipal("sam@GSA-CONNECTORS", "Default"),
+        new ArrayList<Principal>());
+    assertEquals(newGoldenGroups, pusher.getGroupDefinitions());
+
+    // Clear the added group.
+    ldapContext.clearSearchResults();
+    adAdaptor.getDocIds(pusher);
+    assertEquals(goldenGroups, pusher.getGroupDefinitions());
+  }
+
   @Test
   public void testGetDocIdsExceptionPath() throws Exception {
     AdAdaptor adAdaptor = new AdAdaptor() {
@@ -1529,7 +1557,7 @@ public class AdAdaptorTest {
     return strings;
   }
 
-  private MockLdapContext defaultMockLdapContext() throws Exception {
+  private MockLdapContext defaultMockLdapContext() throws NamingException {
     MockLdapContext ldapContext = new MockLdapContext();
     // populate the attributes with values we can test
     ldapContext.addKey("defaultNamingContext", "DN_for_default_naming_context")
@@ -1553,8 +1581,14 @@ public class AdAdaptorTest {
   }
 
   private MockLdapContext mockLdapContextForMakeDefs(boolean disableSamGroup)
-      throws Exception {
+      throws NamingException {
     MockLdapContext ldapContext = defaultMockLdapContext();
+    addDefsToMockLdapContext(ldapContext, disableSamGroup);
+    return ldapContext;
+  }
+
+  private void addDefsToMockLdapContext(MockLdapContext ldapContext,
+      boolean disableSamGroup) {
     // add a group
     String filter = "(|(&(objectClass=group)"
         + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
@@ -1583,8 +1617,6 @@ public class AdAdaptorTest {
                    hexStringToByteArray("000102030405060708090a0b0e"))
                .addSearchResult(filter2, "primaryGroupId", searchDn, "users")
                .addSearchResult(filter2, "sAMAccountName", searchDn, "sam2");
-
-    return ldapContext;
   }
 
   private void tweakGroupCatalogForMakeDefs(AdAdaptor.GroupCatalog groupCatalog,
@@ -1676,17 +1708,21 @@ public class AdAdaptorTest {
 
   /** A version of AdAdaptor that uses only mock AdServers */
   public class FakeAdaptor extends AdAdaptor {
+    private final MockLdapContext ldapContext;
+
+    public FakeAdaptor() throws NamingException {
+      this(mockLdapContextForMakeDefs(false));
+    }
+
+    public FakeAdaptor(MockLdapContext ldapContext) {
+      this.ldapContext = ldapContext;
+    }
+
     @Override
     AdServer newAdServer(Method method, String host, int port,
         String principal, String passwd, String userSearchBaseDN,
         String groupSearchBaseDN, String userSearchFilter,
         String groupSearchFilter, String ldapTimeoutInMillis) {
-      MockLdapContext ldapContext = null;
-      try {
-        ldapContext = mockLdapContextForMakeDefs(false);
-      } catch (Exception e) {
-        fail("Could not create LdapContext:" + e);
-      }
       return new AdServer(host, userSearchBaseDN, groupSearchBaseDN,
           userSearchFilter, groupSearchFilter, ldapContext) {
         private long highestCommittedUSN = 12345678;
@@ -1701,43 +1737,7 @@ public class AdAdaptorTest {
         }
       };
     }
-    @Override
-    void getModifiedDocIdsHelper(DocIdPusher pusher)
-        throws InterruptedException, IOException {
-      // do nothing
-    }
-  };
-
-  /**
-   * A version of AdAdaptor that shares one MockLdapContext object between
-   * multiple (mock) AdServers.
-   */
-  public class FakeAdaptorWithSharedMockLdapContext extends AdAdaptor {
-    private final MockLdapContext sharedLdapContext;
-
-    public FakeAdaptorWithSharedMockLdapContext(MockLdapContext ldapContext) {
-      sharedLdapContext = ldapContext;
-    }
-    @Override
-    AdServer newAdServer(Method method, String host, int port,
-        String principal, String passwd, String userSearchBaseDN,
-        String groupSearchBaseDN, String userSearchFilter,
-        String groupSearchFilter, String ldapTimeoutInMillis) {
-      MockLdapContext ldapContext = sharedLdapContext;
-      return new AdServer(host, userSearchBaseDN, groupSearchBaseDN,
-          userSearchFilter, groupSearchFilter, ldapContext) {
-        @Override
-        void recreateLdapContext() {
-          // leave ldapContext unchanged
-        }
-      };
-    }
-    @Override
-    void getModifiedDocIdsHelper(DocIdPusher pusher)
-        throws InterruptedException, IOException {
-      // do nothing
-    }
-  };
+  }
 
   /** Simple Fake of GroupCatalog that tracks calls to full/incremental crawl */
   private static class FakeCatalog extends AdAdaptor.GroupCatalog {
@@ -1790,6 +1790,9 @@ public class AdAdaptorTest {
   public class MoreFakeAdaptor extends FakeAdaptor {
     private boolean ranFullCrawl;
     private boolean ranIncrementalCrawl;
+
+    public MoreFakeAdaptor() throws NamingException {
+    }
 
     void resetCrawlFlags() {
       ranFullCrawl = false;
