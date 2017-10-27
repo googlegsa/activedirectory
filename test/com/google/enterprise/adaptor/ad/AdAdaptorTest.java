@@ -1418,6 +1418,7 @@ public class AdAdaptorTest {
     assertEquals(goldenGroups, results);
   }
 
+  // TODO(bmj): Add tests with full and incremental pushes.
   @Test
   public void testMultipleFullGroupPushes() throws Exception {
     MockLdapContext ldapContext = defaultMockLdapContext();
@@ -1559,7 +1560,7 @@ public class AdAdaptorTest {
     return strings;
   }
 
-  private MockLdapContext defaultMockLdapContext() throws Exception {
+  private MockLdapContext defaultMockLdapContext() throws NamingException {
     MockLdapContext ldapContext = new MockLdapContext();
     // populate the attributes with values we can test
     ldapContext.addKey("defaultNamingContext", "DN_for_default_naming_context")
@@ -1583,7 +1584,7 @@ public class AdAdaptorTest {
   }
 
   private MockLdapContext mockLdapContextForMakeDefs(boolean disableSamGroup)
-      throws Exception {
+      throws NamingException {
     MockLdapContext ldapContext = defaultMockLdapContext();
     addDefsToMockLdapContext(ldapContext, disableSamGroup);
     return ldapContext;
@@ -1693,7 +1694,7 @@ public class AdAdaptorTest {
   public class FakeAdaptor extends AdAdaptor {
     private final MockLdapContext ldapContext;
 
-    public FakeAdaptor() throws Exception {
+    public FakeAdaptor() throws NamingException {
       this(mockLdapContextForMakeDefs(false));
     }
 
@@ -1774,7 +1775,7 @@ public class AdAdaptorTest {
     private boolean ranFullCrawl;
     private boolean ranIncrementalCrawl;
 
-    public MoreFakeAdaptor() throws Exception {
+    public MoreFakeAdaptor() throws NamingException {
     }
 
     void resetCrawlFlags() {
