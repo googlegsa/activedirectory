@@ -1423,10 +1423,9 @@ public class AdAdaptorTest {
     MockLdapContext ldapContext = defaultMockLdapContext();
     AdAdaptor adAdaptor = new FakeAdaptor(ldapContext);
     RecordingDocIdPusher pusher = new RecordingDocIdPusher();
-    Map<String, String> configEntries = defaultConfig();
-    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
-        /*init=*/ true);
+    initializeAdaptorConfig(adAdaptor, defaultConfig());
 
+    adAdaptor.getDocIds(pusher);
     HashMap<GroupPrincipal, Collection<Principal>> goldenGroups =
         new HashMap<GroupPrincipal, Collection<Principal>>();
     Principal everyone = new GroupPrincipal("Everyone", "Default");
@@ -1439,22 +1438,18 @@ public class AdAdaptorTest {
 
     // Add the sam group.
     addDefsToMockLdapContext(ldapContext, false);
-    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
-        /*init=*/ false);
-    @SuppressWarnings("unchecked")
+    adAdaptor.getDocIds(pusher);
     HashMap<GroupPrincipal, Collection<Principal>> newGoldenGroups =
-        (HashMap<GroupPrincipal, Collection<Principal>>) goldenGroups.clone();
+        new HashMap<GroupPrincipal, Collection<Principal>>(goldenGroups);
     newGoldenGroups.put(new GroupPrincipal("sam@GSA-CONNECTORS", "Default"),
         new ArrayList<Principal>());
     assertEquals(newGoldenGroups, pusher.getGroupDefinitions());
 
     // Clear the added group.
     ldapContext.clearSearchResults();
-    pushGroupDefinitions(adAdaptor, configEntries, pusher, /*fullPush=*/ true,
-        /*init=*/ false);
+    adAdaptor.getDocIds(pusher);
     assertEquals(goldenGroups, pusher.getGroupDefinitions());
   }
-
 
   @Test
   public void testGetDocIdsExceptionPath() throws Exception {
@@ -1595,7 +1590,7 @@ public class AdAdaptorTest {
   }
 
   private void addDefsToMockLdapContext(MockLdapContext ldapContext,
-      boolean disableSamGroup) throws Exception {
+      boolean disableSamGroup) {
     // add a group
     String filter = "(|(&(objectClass=group)"
         + "(groupType:1.2.840.113556.1.4.803:=2147483648))"
