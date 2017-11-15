@@ -15,8 +15,8 @@
 package com.google.enterprise.adaptor.ad;
 
 import static com.google.enterprise.adaptor.DocIdPusher.EVERYTHING_CASE_INSENSITIVE;
-import static com.google.enterprise.adaptor.DocIdPusher.FeedType.FULL;
 import static com.google.enterprise.adaptor.DocIdPusher.FeedType.INCREMENTAL;
+import static com.google.enterprise.adaptor.DocIdPusher.FeedType.REPLACE;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.enterprise.adaptor.AbstractAdaptor;
@@ -249,7 +249,7 @@ public class AdAdaptor extends AbstractAdaptor
           cumulativeCatalog.entities);
       Map<GroupPrincipal, List<Principal>> groups =
           cumulativeCatalog.makeDefs(cumulativeCatalog.entities);
-      pusher.pushGroupDefinitions(groups, EVERYTHING_CASE_INSENSITIVE, FULL,
+      pusher.pushGroupDefinitions(groups, EVERYTHING_CASE_INSENSITIVE, REPLACE,
           null, null);
       // no longer clear cumulativeCatalog.members as part of fix for b/18028678
       lastCompleteGroupCatalog = cumulativeCatalog;
